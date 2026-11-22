@@ -1,0 +1,9 @@
+{
+    "name": "yolislibmanmof/pdf2biblio",
+    "description": "Auto cataloging from PDF for SLiMS 9",
+    "type": "slims-plugin",
+    "license": "GPL-3.0-or-later",
+    "require": {
+        "smalot/pdfparser": "^2.3"
+    }
+}
