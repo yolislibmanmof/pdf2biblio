@@ -1,7 +1,7 @@
 <?php
 namespace PDF2Biblio;
 
-/** Perkayaan: OpenLibrary (ISBN + search judul) → Google Books; cover multi-sumber. */
+/** Perkayaan: OpenLibrary (ISBN + search judul) → Google Books; cover multi-sumber + cache ISBN. */
 class Enricher
 {
     private static array $cache = [];
@@ -144,10 +144,21 @@ class Enricher
 
     private static function cover(array $d, string $tmp, string $token, string $pdfPath): string
     {
+        $isbn = preg_replace('/[^0-9Xx]/', '', (string)($d['isbn'] ?? ''));
+        // B6: cache cover per ISBN — reuse antar impor, hemat bandwidth, cover konsisten.
+        if ($isbn !== '' && defined('SB')) {
+            foreach (['jpg','png','webp','gif'] as $ext) {
+                $p = rtrim(SB, '/') . '/images/docs/p2b_isbn_' . $isbn . '.' . $ext;
+                if (is_file($p)) {
+                    $blob = (string)@file_get_contents($p);
+                    if (self::saveImg($blob, $tmp, $token)) return 'Cache ISBN (images/docs)';
+                }
+            }
+        }
         // 1) JPEG tertanam di PDF = sampul asli (cara mesin lama, terbukti works)
         if (is_file($pdfPath) && (int)@filesize($pdfPath) <= 40 * 1024 * 1024) {
             $jpg = self::embeddedCover($pdfPath);
-            if ($jpg !== null && self::saveImg($jpg, $tmp, $token)) return 'PDF (JPEG tertanam)';
+            if ($jpg !== null && self::saveImg($jpg, $tmp, $token)) { self::writeIsbnCache($isbn, $jpg); return 'PDF (JPEG tertanam)'; }
         }
         // 2) Render halaman 1 (butuh Imagick + Ghostscript; opsional)
         if (extension_loaded('imagick') && is_file($pdfPath)) {
@@ -159,16 +170,29 @@ class Enricher
                 $im->setImageCompressionQuality(85);
                 $blob = $im->getImageBlob();
                 $im->clear();
-                if (self::saveImg($blob, $tmp, $token)) return 'PDF (render sampul)';
+                if (self::saveImg($blob, $tmp, $token)) { self::writeIsbnCache($isbn, $blob); return 'PDF (render sampul)'; }
             } catch (\Throwable $e) {}
         }
         // 3) API covers
         foreach ($d['_covers'] as $c) {
             if (!is_array($c) || empty($c[0])) continue;
             $body = self::http($c[0]);
-            if ($body !== null && self::saveImg($body, $tmp, $token)) return $c[1];
+            if ($body !== null && self::saveImg($body, $tmp, $token)) { self::writeIsbnCache($isbn, $body); return $c[1]; }
         }
         return '';
+    }
+
+    /** B6: tulis cache cover per ISBN ke images/docs (dipakai ulang impor berikutnya). */
+    private static function writeIsbnCache(string $isbn, string $blob): void
+    {
+        if ($isbn === '' || !defined('SB')) return;
+        $info = @getimagesizefromstring($blob);
+        if (!$info) return;
+        $ext = ['image/jpeg'=>'jpg','image/png'=>'png','image/webp'=>'webp','image/gif'=>'gif'][$info['mime']] ?? '';
+        if ($ext === '') return;
+        $dir = rtrim(SB, '/') . '/images/docs';
+        if (!is_dir($dir)) @mkdir($dir, 0775, true);
+        if (is_dir($dir) && is_writable($dir)) @file_put_contents($dir . '/p2b_isbn_' . $isbn . '.' . $ext, $blob);
     }
 
     /** Ekstrak JPEG DCTDecode (sampul) dari stream PDF — port mesin lama anti-crash. */

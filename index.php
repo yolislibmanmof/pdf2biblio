@@ -80,6 +80,15 @@ $badge = fn($ok, $label) => '<span class="p2b-badge ' . ($ok ? 'ok' : 'bad') . '
 .p2b-src{font-size:11px;color:#777;margin-top:6px}
 .p2b-hidden{display:none}
 .p2b-count{color:#666;margin-left:8px}
+/* B-3: opsi simpan + panel batch */
+.p2b-saveopts{margin:10px 0;padding:10px 12px;border:1px solid #d9d9d9;border-radius:8px;background:#fbfdff;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;align-items:end}
+.p2b-saveopts label{font-size:11px;color:#666;display:block}
+.p2b-saveopts select,.p2b-saveopts input[type=text]{width:100%;box-sizing:border-box;padding:4px 6px;border:1px solid #bbb;border-radius:4px;font-size:12px;background:#fff}
+.p2b-saveopts .chk{display:flex;gap:6px;align-items:center;font-size:12px;color:#333}
+.p2b-panel{margin-top:10px;border:1px solid #d9d9d9;border-radius:8px;background:#fff;padding:10px 12px}
+.p2b-panel table{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px}
+.p2b-panel th,.p2b-panel td{border:1px solid #e3e3e3;padding:4px 6px;text-align:left}
+.p2b-panel th{background:#fafafa}
 </style>
 
 <div class="p2b-wrap">
@@ -110,9 +119,29 @@ $badge = fn($ok, $label) => '<span class="p2b-badge ' . ($ok ? 'ok' : 'bad') . '
         <tbody id="p2bBody"></tbody>
     </table>
 
+    <div class="p2b-saveopts" id="p2bSaveOpts">
+        <div><label class="chk"><input type="checkbox" id="p2bItem"> Buat 1 eksemplar otomatis</label></div>
+        <div><label>Tipe koleksi</label><select id="p2bColl"></select></div>
+        <div><label>Lokasi</label><select id="p2bLoc"></select></div>
+        <div><label>Prefix kode eksemplar</label><input type="text" id="p2bPrefix" value="P2B" maxlength="6"></div>
+        <div><label class="chk"><input type="checkbox" id="p2bPrivate"> Lampiran privat (anggota login)</label></div>
+        <div style="grid-column:span 2" id="p2bLimitWrap" class="p2b-hidden"><label>Tipe anggota yang boleh mengakses</label><select id="p2bLimit" multiple size="3"></select></div>
+        <div><label>Label batch (kosong = otomatis)</label><input type="text" id="p2bLabel" maxlength="60" placeholder="p2b-YYYYmmdd-HHmmss"></div>
+    </div>
+
     <button class="p2b-btn" id="p2bSave">Simpan Semua ke Bibliografi</button>
     <button class="p2b-btn gray" id="p2bClear">Bersihkan Antrian</button>
+    <button class="p2b-btn gray" id="p2bBatches">Riwayat Batch</button>
+    <button class="p2b-btn gray" id="p2bCsv" disabled>CSV Batch Terakhir</button>
     <span class="p2b-count" id="p2bCount">0 file dalam antrian.</span>
+
+    <div class="p2b-panel p2b-hidden" id="p2bBatchPanel">
+        <b>Riwayat batch (maks 20, milik Anda)</b>
+        <table>
+            <thead><tr><th>Label</th><th>Waktu</th><th>Ok</th><th>Dup</th><th>Gagal</th><th></th></tr></thead>
+            <tbody id="p2bBatchBody"></tbody>
+        </table>
+    </div>
 
     <div class="p2b-log" id="p2bLog"></div>
 </div>
@@ -122,7 +151,7 @@ $badge = fn($ok, $label) => '<span class="p2b-badge ' . ($ok ? 'ok' : 'bad') . '
     const AJAX = <?= json_encode($endpoint) ?>, CSRF = <?= json_encode($csrf) ?>;
     const $ = id => document.getElementById(id);
     const body = $('p2bBody'), logEl = $('p2bLog');
-    let rows = [], busy = 0;
+    let rows = [], busy = 0, lastBatch = null;
 
     const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     function log(msg, cls){
@@ -220,6 +249,78 @@ $badge = fn($ok, $label) => '<span class="p2b-badge ' . ($ok ? 'ok' : 'bad') . '
     ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
     drop.addEventListener('drop', e => handleFiles(e.dataTransfer.files));
 
+    // ===== B-3: meta master, pemulihan antrian, opsi simpan, batch & undo, CSV =====
+    function fillSelect(sel, list, def){
+        sel.innerHTML = (list || []).map(x => '<option value="' + x.id + '">' + esc(x.name) + '</option>').join('');
+        if (def) sel.value = String(def);
+    }
+    async function loadMeta(){
+        try {
+            const fd = new URLSearchParams(); fd.append('action','meta'); fd.append('t',CSRF);
+            const j = await (await fetch(AJAX, {method:'POST', body:fd})).json();
+            if (!j.ok) throw new Error(j.msg || 'meta gagal');
+            fillSelect($('p2bColl'), j.coll_types, j.defaults && j.defaults.coll_type);
+            fillSelect($('p2bLoc'), j.locations, j.defaults && j.defaults.location);
+            fillSelect($('p2bLimit'), j.member_types, 0);
+        } catch(e){ log('Meta master gagal dimuat: ' + e.message, 'warn'); }
+    }
+    $('p2bPrivate').addEventListener('change', () => {
+        $('p2bLimitWrap').classList.toggle('p2b-hidden', !$('p2bPrivate').checked);
+    });
+    async function restoreQueue(){
+        try {
+            const fd = new URLSearchParams(); fd.append('action','queue'); fd.append('t',CSRF);
+            const j = await (await fetch(AJAX, {method:'POST', body:fd})).json();
+            if (j.ok && (j.rows || []).length) {
+                j.rows.forEach(row => { rows.push(row); render(row, rows.length - 1); });
+                count();
+                log('Antrian dipulihkan: ' + j.rows.length + ' baris (tahan refresh).', 'ok');
+            }
+        } catch(e){ log('Pemulihan antrian gagal: ' + e.message, 'warn'); }
+    }
+    async function refreshBatches(){
+        try {
+            const fd = new URLSearchParams(); fd.append('action','batches'); fd.append('t',CSRF);
+            const j = await (await fetch(AJAX, {method:'POST', body:fd})).json();
+            const tb = $('p2bBatchBody'); tb.innerHTML = '';
+            (j.batches || []).forEach(b => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = '<td>' + esc(b.label) + '</td><td>' + esc(b.created_at) + '</td><td>' + (b.count.ok||0) + '</td><td>' + (b.count.dup||0) + '</td><td>' + (b.count.gagal||0) + '</td><td><button class="p2b-btn red" data-undo>Undo</button></td>';
+                tr.querySelector('[data-undo]').addEventListener('click', async () => {
+                    if (!confirm('Undo batch "' + b.label + '"?\nIni menghapus ' + (b.count.ok||0) + ' bibliografi BESERTA eksemplar, lampiran file, dan indeksnya.\nDuplikat (milik lama) tidak disentuh. Lanjut?')) return;
+                    const fd2 = new URLSearchParams(); fd2.append('action','undo_batch'); fd2.append('t',CSRF); fd2.append('batch_id', b.batch_id); fd2.append('yes','1');
+                    const r = await (await fetch(AJAX, {method:'POST', body:fd2})).json();
+                    log(r.ok ? ('Undo ' + b.label + ': ' + r.deleted + ' bibliografi dihapus.') : ('Undo gagal: ' + r.msg), r.ok ? 'warn' : 'err');
+                    refreshBatches();
+                });
+                tb.appendChild(tr);
+            });
+            if (!(j.batches || []).length) tb.innerHTML = '<tr><td colspan="6">Belum ada batch.</td></tr>';
+        } catch(e){ log('Riwayat batch gagal: ' + e.message, 'warn'); }
+    }
+    $('p2bBatches').addEventListener('click', () => {
+        const p = $('p2bBatchPanel');
+        p.classList.toggle('p2b-hidden');
+        if (!p.classList.contains('p2b-hidden')) refreshBatches();
+    });
+    $('p2bCsv').addEventListener('click', () => {
+        if (!lastBatch) return;
+        const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+        const lines = ['batch_id,label,waktu,token,judul,file,status,biblio_id,item_code,pesan,opac'];
+        lastBatch.results.forEach(o => {
+            const row = rows.find(r => r.token === o.token) || {};
+            const st = o.ok ? (o.dup ? 'dup' : 'ok') : 'gagal';
+            lines.push([lastBatch.id, lastBatch.label, lastBatch.at, o.token, row.title || '', row.pdf_name || '', st, o.id || 0, o.item_code || '', o.msg || '', o.opac || ''].map(q).join(','));
+        });
+        const blob = new Blob(['\uFEFF' + lines.join('\r\n')], {type:'text/csv;charset=utf-8'});
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'p2b_' + lastBatch.id + '.csv';
+        a.click();
+        URL.revokeObjectURL(a.href);
+        log('CSV batch ' + lastBatch.label + ' diunduh (' + lastBatch.results.length + ' baris).', 'ok');
+    });
+
     $('p2bSave').addEventListener('click', async () => {
         const todo = rows.filter(r => !r.saved);
         if (!todo.length || busy > 0) return;
@@ -228,8 +329,18 @@ $badge = fn($ok, $label) => '<span class="p2b-badge ' . ($ok ? 'ok' : 'bad') . '
         log('Menyimpan ' + todo.length + ' bibliografi…');
         try {
             const payload = {action:'bulk_save', t:CSRF,
-                opts:{attach: $('p2bAttach').checked ? 1 : 0, skip_dup: $('p2bSkipDup').checked ? 1 : 0},
-                rows: todo.map(r => { const o = {}; ['token',...MAIN,...DETAIL,'subjects','notes'].forEach(k => o[k] = r[k]); return o; })};
+                opts:{
+                    attach: $('p2bAttach').checked ? 1 : 0,
+                    skip_dup: $('p2bSkipDup').checked ? 1 : 0,
+                    item: $('p2bItem').checked ? 1 : 0,
+                    coll_type: parseInt($('p2bColl').value || '0', 10),
+                    location: parseInt($('p2bLoc').value || '0', 10),
+                    item_prefix: $('p2bPrefix').value || 'P2B',
+                    private: $('p2bPrivate').checked ? 1 : 0,
+                    limit: [...$('p2bLimit').selectedOptions].map(o => parseInt(o.value, 10)),
+                    label: $('p2bLabel').value.trim()
+                },
+                rows: todo.map(r => { const o = {}; ['token','pdf_name',...MAIN,...DETAIL,'subjects','notes'].forEach(k => o[k] = r[k]); return o; })};
             const res = await fetch(AJAX, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
             const j = await res.json();
             if (!j.ok) throw new Error(j.msg);
@@ -237,10 +348,14 @@ $badge = fn($ok, $label) => '<span class="p2b-badge ' . ($ok ? 'ok' : 'bad') . '
                 const row = todo.find(r => r.token === out.token);
                 if (!row) return;
                 if (out.ok && out.dup){ setStatus(row, 'dup', 'duplikat <a href="' + esc(out.opac || '#') + '" target="_blank">#' + out.id + '</a>'); log(row.title + ': ' + out.msg, 'warn'); }
-                else if (out.ok){ row.saved = true; setStatus(row, 'simpan', 'tersimpan <a href="' + esc(out.opac) + '" target="_blank">#' + out.id + '</a>');
+                else if (out.ok){ row.saved = true; setStatus(row, 'simpan', 'tersimpan <a href="' + esc(out.opac) + '" target="_blank">#' + out.id + '</a>' + (out.item_code ? '<br><small>eksemplar ' + esc(out.item_code) + '</small>' : ''));
                     row._tr.querySelectorAll('input,textarea').forEach(x => x.disabled = true); log(row.title + ': ' + out.msg, 'ok'); }
                 else { setStatus(row, 'gagal', 'gagal'); log(row.title + ': ' + out.msg, 'err'); }
             });
+            lastBatch = {id: j.batch_id, label: j.label, at: new Date().toISOString(), results: j.results};
+            $('p2bCsv').disabled = false;
+            log('Batch ' + j.label + ': ' + j.count.ok + ' tersimpan, ' + j.count.dup + ' duplikat, ' + j.count.gagal + ' gagal.', 'ok');
+            if (!$('p2bBatchPanel').classList.contains('p2b-hidden')) refreshBatches();
         } catch(e){ todo.forEach(r => setStatus(r,'gagal','gagal')); log('GAGAL menyimpan: ' + e.message, 'err'); }
         count();
     });
@@ -258,6 +373,9 @@ $badge = fn($ok, $label) => '<span class="p2b-badge ' . ($ok ? 'ok' : 'bad') . '
     });
 
     count();
+    loadMeta();
+    restoreQueue();
     log('PDF2Biblio 2.4 siap. Pintu tunggal index.php (terbukti ada di disk). Ekstraksi: KDT + hak cipta + sampul + metadata + nama file.');
+    log('Batch B aktif: eksemplar otomatis, lampiran privat, label batch, antrian tahan refresh, undo batch, CSV.');
 })();
 </script>
