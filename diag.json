@@ -1,0 +1,431 @@
+{
+    "ok": true,
+    "php": "8.2.28",
+    "SB": "C:\\laragon\\www\\digilib\\",
+    "SWB": "\/digilib\/plugins\/pdf2biblio\/",
+    "DIR": "C:\\laragon\\www\\digilib\\plugins\\pdf2biblio",
+    "REMOTE_ADDR": "::1",
+    "files": {
+        "vendor\/autoload.php": 748,
+        "lib\/Extractor.php": 23329,
+        "lib\/Enricher.php": 10396,
+        "lib\/Importer.php": 10319,
+        "lib\/Api.php": 10895,
+        "index.php": 14789,
+        "manager.php": false,
+        "ajax.php": 4347,
+        "pdf2biblio.plugin.php": 466
+    },
+    "dir": [
+        ".",
+        "..",
+        ".git",
+        ".gitattributes",
+        "ajax.php",
+        "cli_test.php",
+        "composer.json",
+        "composer.lock",
+        "dump_head.php",
+        "head.txt",
+        "index.php",
+        "lib",
+        "pages",
+        "pdf2biblio.plugin.php",
+        "tmp",
+        "vendor"
+    ],
+    "lib": [
+        ".",
+        "..",
+        "Api.php",
+        "BiblioMapper.php",
+        "Enricher.php",
+        "Extractor.php",
+        "Importer.php",
+        "PdfExtractor.php"
+    ],
+    "session_files": {
+        "admin\/default\/session.inc.php": true,
+        "admin\/default\/session_check.inc.php": true,
+        "lib\/session.inc.php": false,
+        "admin\/session.inc.php": false
+    },
+    "session_keys": [],
+    "uid": null,
+    "username": null,
+    "get": {
+        "action": "diag"
+    },
+    "uri": "\/digilib\/plugins\/pdf2biblio\/ajax.php?action=diag",
+    "plugins_props": {
+        "locations": [
+            "C:\\laragon\\www\\digilib\\plugins"
+        ],
+        "plugins": [],
+        "active_plugins": {
+            "414ace9d19e733f0df1dfbaa68ed1def": {
+                "id": "414ace9d19e733f0df1dfbaa68ed1def",
+                "options": null,
+                "path": "C:\\laragon\\www\\digilib\\plugins\\isbn_quick_fetcher\\isbn_quick_fetcher.plugin.php",
+                "created_at": "2026-08-17 23:11:31",
+                "updated_at": null,
+                "deleted_at": null,
+                "uid": 1
+            },
+            "3f0f011cd24a27b1db77d6218c59f2ea": {
+                "id": "3f0f011cd24a27b1db77d6218c59f2ea",
+                "options": "{\"version\": \"1.0.0\", \"db_version\": 0}",
+                "path": "C:\\laragon\\www\\digilib\\plugins\\libaudio\\libaudio.plugin.php",
+                "created_at": "2026-08-19 15:03:08",
+                "updated_at": "2026-08-19 15:59:37",
+                "deleted_at": null,
+                "uid": 1
+            },
+            "296b5358543731ac9553ec69a13b17a3": {
+                "id": "296b5358543731ac9553ec69a13b17a3",
+                "options": null,
+                "path": "C:\\laragon\\www\\digilib\\plugins\\ai_assistant\\ai_assistant.plugin.php.php",
+                "created_at": "2026-08-19 08:15:06",
+                "updated_at": null,
+                "deleted_at": null,
+                "uid": 1
+            },
+            "3c3c30e43281783920d90c171bedeefa": {
+                "id": "3c3c30e43281783920d90c171bedeefa",
+                "options": null,
+                "path": "C:\\laragon\\www\\digilib\\plugins\\ai_assistant\\ai_assistant.plugin.php",
+                "created_at": "2026-08-19 08:36:05",
+                "updated_at": null,
+                "deleted_at": null,
+                "uid": 1
+            },
+            "900c2bf1c574f4c36735dbb1241aae1d": {
+                "id": "900c2bf1c574f4c36735dbb1241aae1d",
+                "options": "{\"version\": \"2.25.1\", \"db_version\": 26}",
+                "path": "C:\\laragon\\www\\digilib\\plugins\\inventaris-barang\\inventory.plugin.php",
+                "created_at": "2026-11-10 11:10:58",
+                "updated_at": null,
+                "deleted_at": null,
+                "uid": 1
+            },
+            "e7431e46403a9d47af6478787d770930": {
+                "id": "e7431e46403a9d47af6478787d770930",
+                "options": null,
+                "path": "C:\\laragon\\www\\digilib\\plugins\\awesome_member_card\\awesome_member_card_plugin.php",
+                "created_at": "2026-10-17 17:28:15",
+                "updated_at": null,
+                "deleted_at": null,
+                "uid": 1
+            },
+            "3a725114f83a1149b9c1fb18a1233a11": {
+                "id": "3a725114f83a1149b9c1fb18a1233a11",
+                "options": null,
+                "path": "C:\\laragon\\www\\digilib\\plugins\\pdf2biblio\\pdf2biblio.plugin.php",
+                "created_at": "2026-11-22 14:22:12",
+                "updated_at": null,
+                "deleted_at": null,
+                "uid": 1
+            },
+            "1d1b306f14c6c76b8a0c3274ceded148": {
+                "id": "1d1b306f14c6c76b8a0c3274ceded148",
+                "options": null,
+                "path": "C:\\laragon\\www\\digilib\\plugins\\book_cover_via_google_cover\\book_cover_via_google_cover.plugin.php",
+                "created_at": "2026-11-16 19:12:46",
+                "updated_at": null,
+                "deleted_at": null,
+                "uid": 1
+            }
+        },
+        "hooks": {
+            "custom_api_route": {
+                "9999": [
+                    {},
+                    "",
+                    9999
+                ]
+            }
+        },
+        "menus": {
+            "stock_take": {
+                "56e260b575eeb0eb5680d487a2a7911f": [
+                    "Rekap Sarpras",
+                    "\/digilib\/plugins\/pdf2biblio\/admin\/plugin_container.php?mod=stock_take&id=56e260b575eeb0eb5680d487a2a7911f",
+                    "Capaian sarana dan prasarana dari data ruangan, barang, dan pengawasan.",
+                    "C:\\laragon\\www\\digilib\\plugins\\inventaris-barang\\sarpras.php"
+                ],
+                "198a6488edf45ab26a75466eeb3fdf5e": [
+                    "Tugas",
+                    "\/digilib\/plugins\/pdf2biblio\/admin\/plugin_container.php?mod=stock_take&id=198a6488edf45ab26a75466eeb3fdf5e",
+                    "Pemeriksaan, tindak lanjut, dan verifikasi.",
+                    "C:\\laragon\\www\\digilib\\plugins\\inventaris-barang\\inspection.php"
+                ],
+                "b3576c74e0b4e228289f13d0682237ff": [
+                    "Jadwal",
+                    "\/digilib\/plugins\/pdf2biblio\/admin\/plugin_container.php?mod=stock_take&id=b3576c74e0b4e228289f13d0682237ff",
+                    "Atur pemeriksaan rutin ruangan.",
+                    "C:\\laragon\\www\\digilib\\plugins\\inventaris-barang\\checklist-and-schedule.php"
+                ],
+                "eb665786231f48cbbb2a3d8e97889af8": [
+                    "Checklist",
+                    "\/digilib\/plugins\/pdf2biblio\/admin\/plugin_container.php?mod=stock_take&id=eb665786231f48cbbb2a3d8e97889af8",
+                    "Kelola checklist dan riwayat versinya.",
+                    "C:\\laragon\\www\\digilib\\plugins\\inventaris-barang\\findings-and-follow-up.php"
+                ],
+                "0d283ba8b183f656c74f518e9b15c691": [
+                    "Laporan",
+                    "\/digilib\/plugins\/pdf2biblio\/admin\/plugin_container.php?mod=stock_take&id=0d283ba8b183f656c74f518e9b15c691",
+                    "Tinjau capaian dan cetak laporan periode.",
+                    "C:\\laragon\\www\\digilib\\plugins\\inventaris-barang\\report.php"
+                ],
+                "eb842b1ffe7a57f3d1b753b745e05f2c": [
+                    "Ruangan & Barang",
+                    "\/digilib\/plugins\/pdf2biblio\/admin\/plugin_container.php?mod=stock_take&id=eb842b1ffe7a57f3d1b753b745e05f2c",
+                    "Kelola ruangan, barang, dan kartu inventaris.",
+                    "C:\\laragon\\www\\digilib\\plugins\\inventaris-barang\\index.php"
+                ],
+                "3f66e035bd2f442e7deefb279662d4cb": [
+                    "Perangkat Lunak",
+                    "\/digilib\/plugins\/pdf2biblio\/admin\/plugin_container.php?mod=stock_take&id=3f66e035bd2f442e7deefb279662d4cb",
+                    "Catat aplikasi yang dipakai perpustakaan beserta lisensinya.",
+                    "C:\\laragon\\www\\digilib\\plugins\\inventaris-barang\\software.php"
+                ],
+                "6219de853d88bd3b8a61be62888fa528": [
+                    "Gedung & Jaringan",
+                    "\/digilib\/plugins\/pdf2biblio\/admin\/plugin_container.php?mod=stock_take&id=6219de853d88bd3b8a61be62888fa528",
+                    "Isi luas gedung, area di luar ruangan (parkir, kantin, taman), dan bandwidth internet beserta buktinya.",
+                    "C:\\laragon\\www\\digilib\\plugins\\inventaris-barang\\facility.php"
+                ],
+                "cbba04a7b0a0d48621ac78b315475965": [
+                    "Sivitas per Lokasi",
+                    "\/digilib\/plugins\/pdf2biblio\/admin\/plugin_container.php?mod=stock_take&id=cbba04a7b0a0d48621ac78b315475965",
+                    "Hitung sivitas dari anggota aktif dan petakan ke lokasi perpustakaan.",
+                    "C:\\laragon\\www\\digilib\\plugins\\inventaris-barang\\sivitas.php"
+                ],
+                "7313b43163d6928d51f9d12347808efe": [
+                    "Pengaturan Cetak",
+                    "\/digilib\/plugins\/pdf2biblio\/admin\/plugin_container.php?mod=stock_take&id=7313b43163d6928d51f9d12347808efe",
+                    "Kelola template kop institusi dan nomor dokumen PDF.",
+                    "C:\\laragon\\www\\digilib\\plugins\\inventaris-barang\\print-settings.php"
+                ],
+                "d1daedbe1c80abc0e253991a26bcc7c0": [
+                    "Aplikasi InvenSync",
+                    "\/digilib\/plugins\/pdf2biblio\/admin\/plugin_container.php?mod=stock_take&id=d1daedbe1c80abc0e253991a26bcc7c0",
+                    "Izinkan aplikasi Klaras InvenSync dan kelola perangkat yang masuk.",
+                    "C:\\laragon\\www\\digilib\\plugins\\inventaris-barang\\app.php"
+                ]
+            },
+            "opac": {
+                "info_barang": [
+                    "Info Barang",
+                    "\/digilib\/plugins\/pdf2biblio\/index.php?p=info_barang",
+                    "Informasi barang inventaris dari label QR.",
+                    "C:\\laragon\\www\\digilib\\plugins\\inventaris-barang\\opac.php"
+                ],
+                "verifikasi_dokumen": [
+                    "Verifikasi Dokumen",
+                    "\/digilib\/plugins\/pdf2biblio\/index.php?p=verifikasi_dokumen",
+                    "Memeriksa keaslian dokumen inventaris yang ditandatangani secara elektronik.",
+                    "C:\\laragon\\www\\digilib\\plugins\\inventaris-barang\\verifikasi.php"
+                ]
+            },
+            "bibliography": {
+                "d41d8cd98f00b204e9800998ecf8427e": [
+                    "PDF2Biblio",
+                    "\/digilib\/plugins\/pdf2biblio\/admin\/plugin_container.php?mod=bibliography&id=d41d8cd98f00b204e9800998ecf8427e",
+                    null,
+                    false
+                ]
+            }
+        },
+        "deep": 2,
+        "autoloadList": [],
+        "hook_handler": "",
+        "current_location": "",
+        "default_module": []
+    },
+    "plugins_menus": {
+        "getMenus": {
+            "stock_take": {
+                "56e260b575eeb0eb5680d487a2a7911f": [
+                    "Rekap Sarpras",
+                    "\/digilib\/plugins\/pdf2biblio\/admin\/plugin_container.php?mod=stock_take&id=56e260b575eeb0eb5680d487a2a7911f",
+                    "Capaian sarana dan prasarana dari data ruangan, barang, dan pengawasan.",
+                    "C:\\laragon\\www\\digilib\\plugins\\inventaris-barang\\sarpras.php"
+                ],
+                "198a6488edf45ab26a75466eeb3fdf5e": [
+                    "Tugas",
+                    "\/digilib\/plugins\/pdf2biblio\/admin\/plugin_container.php?mod=stock_take&id=198a6488edf45ab26a75466eeb3fdf5e",
+                    "Pemeriksaan, tindak lanjut, dan verifikasi.",
+                    "C:\\laragon\\www\\digilib\\plugins\\inventaris-barang\\inspection.php"
+                ],
+                "b3576c74e0b4e228289f13d0682237ff": [
+                    "Jadwal",
+                    "\/digilib\/plugins\/pdf2biblio\/admin\/plugin_container.php?mod=stock_take&id=b3576c74e0b4e228289f13d0682237ff",
+                    "Atur pemeriksaan rutin ruangan.",
+                    "C:\\laragon\\www\\digilib\\plugins\\inventaris-barang\\checklist-and-schedule.php"
+                ],
+                "eb665786231f48cbbb2a3d8e97889af8": [
+                    "Checklist",
+                    "\/digilib\/plugins\/pdf2biblio\/admin\/plugin_container.php?mod=stock_take&id=eb665786231f48cbbb2a3d8e97889af8",
+                    "Kelola checklist dan riwayat versinya.",
+                    "C:\\laragon\\www\\digilib\\plugins\\inventaris-barang\\findings-and-follow-up.php"
+                ],
+                "0d283ba8b183f656c74f518e9b15c691": [
+                    "Laporan",
+                    "\/digilib\/plugins\/pdf2biblio\/admin\/plugin_container.php?mod=stock_take&id=0d283ba8b183f656c74f518e9b15c691",
+                    "Tinjau capaian dan cetak laporan periode.",
+                    "C:\\laragon\\www\\digilib\\plugins\\inventaris-barang\\report.php"
+                ],
+                "eb842b1ffe7a57f3d1b753b745e05f2c": [
+                    "Ruangan & Barang",
+                    "\/digilib\/plugins\/pdf2biblio\/admin\/plugin_container.php?mod=stock_take&id=eb842b1ffe7a57f3d1b753b745e05f2c",
+                    "Kelola ruangan, barang, dan kartu inventaris.",
+                    "C:\\laragon\\www\\digilib\\plugins\\inventaris-barang\\index.php"
+                ],
+                "3f66e035bd2f442e7deefb279662d4cb": [
+                    "Perangkat Lunak",
+                    "\/digilib\/plugins\/pdf2biblio\/admin\/plugin_container.php?mod=stock_take&id=3f66e035bd2f442e7deefb279662d4cb",
+                    "Catat aplikasi yang dipakai perpustakaan beserta lisensinya.",
+                    "C:\\laragon\\www\\digilib\\plugins\\inventaris-barang\\software.php"
+                ],
+                "6219de853d88bd3b8a61be62888fa528": [
+                    "Gedung & Jaringan",
+                    "\/digilib\/plugins\/pdf2biblio\/admin\/plugin_container.php?mod=stock_take&id=6219de853d88bd3b8a61be62888fa528",
+                    "Isi luas gedung, area di luar ruangan (parkir, kantin, taman), dan bandwidth internet beserta buktinya.",
+                    "C:\\laragon\\www\\digilib\\plugins\\inventaris-barang\\facility.php"
+                ],
+                "cbba04a7b0a0d48621ac78b315475965": [
+                    "Sivitas per Lokasi",
+                    "\/digilib\/plugins\/pdf2biblio\/admin\/plugin_container.php?mod=stock_take&id=cbba04a7b0a0d48621ac78b315475965",
+                    "Hitung sivitas dari anggota aktif dan petakan ke lokasi perpustakaan.",
+                    "C:\\laragon\\www\\digilib\\plugins\\inventaris-barang\\sivitas.php"
+                ],
+                "7313b43163d6928d51f9d12347808efe": [
+                    "Pengaturan Cetak",
+                    "\/digilib\/plugins\/pdf2biblio\/admin\/plugin_container.php?mod=stock_take&id=7313b43163d6928d51f9d12347808efe",
+                    "Kelola template kop institusi dan nomor dokumen PDF.",
+                    "C:\\laragon\\www\\digilib\\plugins\\inventaris-barang\\print-settings.php"
+                ],
+                "d1daedbe1c80abc0e253991a26bcc7c0": [
+                    "Aplikasi InvenSync",
+                    "\/digilib\/plugins\/pdf2biblio\/admin\/plugin_container.php?mod=stock_take&id=d1daedbe1c80abc0e253991a26bcc7c0",
+                    "Izinkan aplikasi Klaras InvenSync dan kelola perangkat yang masuk.",
+                    "C:\\laragon\\www\\digilib\\plugins\\inventaris-barang\\app.php"
+                ]
+            },
+            "opac": {
+                "info_barang": [
+                    "Info Barang",
+                    "\/digilib\/plugins\/pdf2biblio\/index.php?p=info_barang",
+                    "Informasi barang inventaris dari label QR.",
+                    "C:\\laragon\\www\\digilib\\plugins\\inventaris-barang\\opac.php"
+                ],
+                "verifikasi_dokumen": [
+                    "Verifikasi Dokumen",
+                    "\/digilib\/plugins\/pdf2biblio\/index.php?p=verifikasi_dokumen",
+                    "Memeriksa keaslian dokumen inventaris yang ditandatangani secara elektronik.",
+                    "C:\\laragon\\www\\digilib\\plugins\\inventaris-barang\\verifikasi.php"
+                ]
+            },
+            "bibliography": {
+                "d41d8cd98f00b204e9800998ecf8427e": [
+                    "PDF2Biblio",
+                    "\/digilib\/plugins\/pdf2biblio\/admin\/plugin_container.php?mod=bibliography&id=d41d8cd98f00b204e9800998ecf8427e",
+                    null,
+                    false
+                ]
+            }
+        }
+    },
+    "db_tables_plugin": [
+        "plugin_awesome_card_settings",
+        "plugin_crypto_clearance_certs",
+        "plugin_crypto_clearance_migrations",
+        "plugin_crypto_clearance_settings",
+        "plugins"
+    ],
+    "db_plugins": [
+        {
+            "id": "414ace9d19e733f0df1dfbaa68ed1def",
+            "options": null,
+            "path": "C:\\laragon\\www\\digilib\\plugins\\isbn_quick_fetcher\\isbn_quick_fetcher.plugin.php",
+            "created_at": "2026-08-17 23:11:31",
+            "updated_at": null,
+            "deleted_at": null,
+            "uid": "1"
+        },
+        {
+            "id": "3f0f011cd24a27b1db77d6218c59f2ea",
+            "options": "{\"version\": \"1.0.0\", \"db_version\": 0}",
+            "path": "C:\\laragon\\www\\digilib\\plugins\\libaudio\\libaudio.plugin.php",
+            "created_at": "2026-08-19 15:03:08",
+            "updated_at": "2026-08-19 15:59:37",
+            "deleted_at": null,
+            "uid": "1"
+        },
+        {
+            "id": "296b5358543731ac9553ec69a13b17a3",
+            "options": null,
+            "path": "C:\\laragon\\www\\digilib\\plugins\\ai_assistant\\ai_assistant.plugin.php.php",
+            "created_at": "2026-08-19 08:15:06",
+            "updated_at": null,
+            "deleted_at": null,
+            "uid": "1"
+        },
+        {
+            "id": "3c3c30e43281783920d90c171bedeefa",
+            "options": null,
+            "path": "C:\\laragon\\www\\digilib\\plugins\\ai_assistant\\ai_assistant.plugin.php",
+            "created_at": "2026-08-19 08:36:05",
+            "updated_at": null,
+            "deleted_at": null,
+            "uid": "1"
+        },
+        {
+            "id": "900c2bf1c574f4c36735dbb1241aae1d",
+            "options": "{\"version\": \"2.25.1\", \"db_version\": 26}",
+            "path": "C:\\laragon\\www\\digilib\\plugins\\inventaris-barang\\inventory.plugin.php",
+            "created_at": "2026-11-10 11:10:58",
+            "updated_at": null,
+            "deleted_at": null,
+            "uid": "1"
+        },
+        {
+            "id": "e7431e46403a9d47af6478787d770930",
+            "options": null,
+            "path": "C:\\laragon\\www\\digilib\\plugins\\awesome_member_card\\awesome_member_card_plugin.php",
+            "created_at": "2026-10-17 17:28:15",
+            "updated_at": null,
+            "deleted_at": null,
+            "uid": "1"
+        },
+        {
+            "id": "3a725114f83a1149b9c1fb18a1233a11",
+            "options": null,
+            "path": "C:\\laragon\\www\\digilib\\plugins\\pdf2biblio\\pdf2biblio.plugin.php",
+            "created_at": "2026-11-22 14:22:12",
+            "updated_at": null,
+            "deleted_at": null,
+            "uid": "1"
+        },
+        {
+            "id": "1d1b306f14c6c76b8a0c3274ceded148",
+            "options": null,
+            "path": "C:\\laragon\\www\\digilib\\plugins\\book_cover_via_google_cover\\book_cover_via_google_cover.plugin.php",
+            "created_at": "2026-11-16 19:12:46",
+            "updated_at": null,
+            "deleted_at": null,
+            "uid": "1"
+        }
+    ],
+    "md5_candidates": {
+        "C:\\laragon\\www\\digilib\\plugins\\pdf2biblio\/manager.php": "4f035b58fd1bab5632faf887375f33e6",
+        "C:\\laragon\\www\\digilib\\plugins\\pdf2biblio\/index.php": "086a899eeed80e4ab357b14bf7b1752d",
+        "plugins\/pdf2biblio\/manager.php": "3152aabf478a85ffa6e472984537b938",
+        "plugins\/pdf2biblio\/index.php": "8afc9bc5c5ad5835ee98b285614c8468",
+        "C:\\laragon\\www\\digilib\\plugins\/pdf2biblio\/manager.php": "92deac9dbb3efd3a09210e53dd06be22",
+        "C:\\laragon\\www\\digilib\\plugins\/pdf2biblio\/index.php": "2bb29d558f66c9018277c8222b11387d"
+    },
+    "container_src": "<?php\n\/**\n * @Created by          : Waris Agung Widodo (ido.alit@gmail.com)\n * @Date                : 06\/11\/20 05.31\n * @File name           : plugin_container.php\n *\/\n\nuse \\SLiMS\\Plugins;\n\ndefine('INDEX_AUTH', 1);\nrequire_once __DIR__ . '\/..\/sysconfig.inc.php';\n\nif (!isset($_GET['mod']) && !isset($_GET['id'])) die('Plugin id not defined!');\n\n$module = utility::filterData('mod', 'get', false, true, true);\n$plugin_id = utility::filterData('id', 'get', false, true, true);\n\n\/\/ check if plugin is enabled\n$all_active_menu_plugin = Plugins::getInstance()->getMenus($module);\nif (!isset($all_active_menu_plugin[$plugin_id])) die('Plugin not found \/ disabled!');\nif (!$all_active_menu_plugin[$plugin_id][3]) die('File path is not found!');\n\n\/\/ load autoload\nPlugins::getInstance()->getAutoload($all_active_menu_plugin[$plugin_id][3]);\n\n\/\/ load plugin\nrequire_once $all_active_menu_plugin[$plugin_id][3];",
+    "plugins_src": "<?php\n\n\/**\n * @Created by          : Waris Agung Widodo (ido.alit@gmail.com)\n * @Date                : 05\/11\/20 13.53\n * @File name           : Plugins.php\n *\/\n\nnamespace SLiMS;\n\n\nuse SLiMS\\DB;\nuse SLiMS\\Cli\\Console;\nuse SLiMS\\SearchEngine\\Engine;\nuse SLiMS\\Session\\Factory;\nuse Symfony\\Component\\Finder\\Finder;\nuse stdClass;\nuse Exception;\n\nclass Plugins\n{\n    const DATABASE_VERSION = 'db_version';\n\n    \/**\n     * Constanta's List of Hooks\n     *\/\n    const SYSCONFIG_ALL_INIT = 'sysconfig_all_init';\n    const ADMIN_SESSION_AFTER_START = 'admin_session_after_start';\n    const ADMIN_AFTER_MODULE_LOADED = 'admin_after_module_loaded';\n    const ADMIN_AFTER_CONTENT_LOADED = 'admin_after_content_loaded';\n    const CONTENT_BEFORE_LOAD = 'before_content_load';\n    const CONTENT_AFTER_LOAD = 'after_content_load';\n    const BIBLIOGRAPHY_INIT = 'bibliography_init';\n    const BIBLIOGRAPHY_BEFORE_UPDATE = 'bibliography_before_update';\n    const BIBLIOGRAPHY_AFTER_UPDATE = 'bibliography_after_update';\n    const BIBLIOGRAPHY_BEFORE_SAVE = 'bibliography_before_save';\n    const BIBLIOGRAPHY_AFTER_SAVE = 'bibliography_after_save';\n    const BIBLIOGRAPHY_BEFORE_DELETE = 'bibliography_before_delete';\n    const BIBLIOGRAPHY_AFTER_DELETE = 'bibliography_after_delete';\n    const BIBLIOGRAPHY_CUSTOM_FIELD_DATA = 'advance_custom_field_data';\n    const BIBLIOGRAPHY_CUSTOM_FIELD_FORM = 'advance_custom_field_form';\n    const BIBLIOGRAPHY_BEFORE_DATAGRID_OUTPUT = 'bibliography_before_datagrid_output';\n    const CIRCULATION_AFTER_SUCCESSFUL_TRANSACTION = 'circulation_after_successful_transaction';\n    const CIRCULATION_AFTER_START_TRANSACTION = 'circulation_after_start_transaction';\n    const MEMBERSHIP_INIT = 'membership_init';\n    const MEMBERSHIP_BEFORE_UPDATE = 'membership_before_update';\n    const MEMBERSHIP_AFTER_UPDATE = 'membership_after_update';\n    const MEMBERSHIP_BEFORE_SAVE = 'membership_before_save';\n    const MEMBERSHIP_AFTER_SAVE = 'membership_after_save';\n    const MEMBERSHIP_CUSTOM_FIELD_DATA = 'membership_custom_field_data';\n    const MEMBERSHIP_CUSTOM_FIELD_FORM = 'membership_custom_field_form';\n    const OVERDUE_NOTICE_INIT = 'overduenotice_init';\n    const DUEDATE_NOTICE_INIT = 'duedate_init';\n    const MODULE_MAIN_MENU_INIT = 'module_main_menu_init';\n    const OAI2_INIT = 'oai2_init';\n    const SYSTEM_BEFORE_CONFIGFORM_PRINTOUT = 'system_before_configform_printout';\n    const SYSTEM_BEFORE_CONFIG_SAVE = 'system_before_config_save';\n    const SYSTEM_AFTER_CONFIG_SAVE = 'system_after_config_save';\n\n    private static $instance;\n    \/**\n     * Store plugins location, so plugins can stored in multiple location\n     * @var array\n     *\/\n    protected array $locations = [];\n\n    \/**\n     * Plugin scanned will store here\n     * @var array\n     *\/\n    protected array $plugins = [];\n    protected array $active_plugins = [];\n    protected array $hooks = [];\n    protected array $menus = [];\n    private int $deep = 2;\n    private array $autoloadList = [];\n    private string $hook_handler = '';\n    private string $current_location = '';\n    private ?string $group_name = null;\n    private array $default_module = [];\n\n    \/**\n     * Plugins constructor.\n     * @param null $location\n     *\/\n    public function __construct($location = null)\n    {\n        $this->addLocation($location);\n    }\n\n    public static function getInstance(): Plugins\n    {\n        if (is_null(self::$instance)) self::$instance = new static;\n        return self::$instance;\n    }\n\n    \/**\n     * Add .plugin.php | plugin file into list\n     * @param array|string $location\n     * @return Plugins\n     *\/\n    public function addLocation($location): Plugins\n    {\n        if (is_array($location)) {\n            $this->locations = array_unique(array_merge($this->locations, $location));\n        } elseif (!is_null($location)) {\n            $this->locations[] = $location;\n        } else {\n            \/\/ setup default location\n            $this->locations[] = realpath(__DIR__ . '\/..\/plugins');\n        }\n        return $this;\n    }\n\n    \/**\n     * Collection plugin information from .plugin.php\n     * documentation at top of file.\n     * \n     * @param string $path\n     * @return stdClass\n     *\/\n    private function getPluginInfo($path): stdClass\n    {\n        $file_open = fopen($path, 'r');\n        $raw_data = fread($file_open, 8192);\n        fclose($file_open);\n\n        \/\/ store plugin info as object\n        $plugin = new stdClass;\n\n        \/\/ parsing plugin data\n        preg_match('|Plugin Name:(.*)$|mi', $raw_data, $plugin->name);\n        preg_match('|Plugin URI:(.*)$|mi', $raw_data, $plugin->uri);\n        preg_match('|Version:(.*)|i', $raw_data, $plugin->version);\n        preg_match('|Description:(.*)$|mi', $raw_data, $plugin->description);\n        preg_match('|Author:(.*)$|mi', $raw_data, $plugin->author);\n        preg_match('|Author URI:(.*)$|mi', $raw_data, $plugin->author_uri);\n\n        foreach (get_object_vars($plugin) as $key => $val) {\n            $plugin->$key = isset($val[1]) && trim($val[1]) !== '' ? trim($val[1]) : null;\n        }\n\n        $plugin->id = md5($path);\n        $plugin->path = $path;\n        return $plugin;\n    }\n\n    \/**\n     * Scan plugin directory to get plugin information.\n     * by default SLiMS use <slims-root>\/plugin to store\n     * plugin. Please read 'addLocation' method method.\n     * \n     * @param string $location\n     * @return void\n     *\/\n    private function getPluginsInfo($location)\n    {\n        \/\/ open location\n        if ($dir = opendir($location)) {\n            while ($file = readdir($dir)) {\n                $path = $location . DS . $file;\n                \/\/ if location is file\n                if (is_file($path)) {\n                    \/\/ just get file with suffix plugin.php\n                    if (strpos($path, 'plugin.php')) {\n                        $plugin = $this->getPluginInfo($path);\n                        \/\/ get migration info\n                        $this->plugins[$plugin->id] = $plugin;\n                        $this->plugins[$plugin->id]->migration = $this->getMigrationInfo($plugin);\n                        $this->plugins[$plugin->id]->action = $this->getActionInfo($plugin);\n                    }\n                } elseif (is_dir($path) && (substr($file, 0, 1) != '.')) {\n                    \/\/ get plugins from sub folder location\n                    \/\/ deep level directory that will be scanned\n                    if ($this->isDeep($location)) $this->getPluginsInfo($path);\n                }\n            }\n            closedir($dir);\n        }\n    }\n\n    \/**\n     * Register migration directory in each plugin\n     * if it exists. This method is use SLiMS\\Migration\\Migration\n     * to migrate some query | schema | files etc from some plugin.\n     * \n     * @param Plugins $plugin\n     * @return stdClass\n     *\/\n    private function getMigrationInfo($plugin): stdClass\n    {\n        $migration = new stdClass;\n        $migration->is_exist = false;\n\n        $migration_directory = dirname($plugin->path) . DIRECTORY_SEPARATOR . 'migration';\n        if (is_dir($migration_directory)) {\n            $migration->is_exist = true;\n            $migration->{self::DATABASE_VERSION} = $this->getDBVersion($plugin->id);\n        }\n        return $migration;\n    }\n\n    \/**\n     * Some times we need to move\n     * a file into SLiMS core code such as\n     * config etc without manual process. \n     * Maybe you ask \"Why we need action? Is it migration \n     * feature is enough?\" the answer is \"seperate\". Seperating \n     * database migration process and file migration process.\n     * \n     * @param Plugins $plugin\n     * @return stdClass\n     *\/\n    private function getActionInfo($plugin)\n    {\n        $action = new stdClass;\n        $action->is_exist = false;\n\n        $action_directory = dirname($plugin->path) . DIRECTORY_SEPARATOR . 'action';\n        if (is_dir($action_directory)) {\n            $action->directory = $action_directory;\n            $action->is_exist = true;\n        }\n     "
+}
