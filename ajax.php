@@ -10,6 +10,7 @@ foreach ([SB . 'admin/default/session.inc.php', SB . 'lib/session.inc.php'] as $
 }
 if (session_status() === PHP_SESSION_NONE) @session_start();
 
+$root = __DIR__; // FIX: dulu hanya didefinisikan di cabang diag → fatal di jalur lain
 $action = $_REQUEST['action'] ?? '';
 
 if ($action === 'diag') {
@@ -21,7 +22,6 @@ if ($action === 'diag') {
         echo json_encode(['ok' => false, 'msg' => 'diag hanya untuk localhost atau admin login.']);
         exit;
     }
-    $root = __DIR__;
     $files = [];
     foreach (['vendor/autoload.php','lib/Extractor.php','lib/Enricher.php','lib/Importer.php','lib/Api.php','index.php','manager.php','ajax.php','pdf2biblio.plugin.php'] as $f) {
         $p = $root . '/' . $f;
@@ -84,4 +84,4 @@ if ($action === 'diag') {
     exit;
 }
 
-require $root . '/manager.php';
+require $root . '/pages/manager.php'; // FIX: manager.php kini berada di pages/

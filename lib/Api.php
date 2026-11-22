@@ -37,6 +37,18 @@ class Api
             }
         }
 
+        // FIX bulk_save: body JSON TIDAK mengisi $_REQUEST/$_POST di PHP.
+        // Parse sekali di sini agar router di semua pintu (index.php / manager.php / ajax.php)
+        // melihat action + t. Api::save() tetap membaca php://input sendiri (stream boleh dibaca ulang).
+        if (!isset($_REQUEST['action'])
+            && stripos($_SERVER['CONTENT_TYPE'] ?? ($_SERVER['HTTP_CONTENT_TYPE'] ?? ''), 'application/json') !== false) {
+            $p2bJson = json_decode((string)file_get_contents('php://input'), true);
+            if (is_array($p2bJson)) {
+                $_POST = array_merge($_POST, $p2bJson);
+                $_REQUEST = array_merge($_REQUEST, $p2bJson);
+            }
+        }
+
         self::$tmp = dirname(__DIR__) . '/tmp';
         if (!is_dir(self::$tmp)) @mkdir(self::$tmp, 0775, true);
         foreach (glob(self::$tmp . '/*') ?: [] as $f) {

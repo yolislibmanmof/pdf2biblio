@@ -1,11 +1,13 @@
 <?php
 /**
  * PDF2Biblio manager — entry point plugin_container.php (render + AJAX + diag).
+ * Berada di pages/ → basis path plugin = dirname(__DIR__).
  */
 defined('SB') or die('Akses langsung ditolak.');
 
+$base = dirname(__DIR__); // FIX: dulu __DIR__ (= pages/) → vendor/lib/index tidak ketemu
 $need = ['vendor/autoload.php', 'lib/Extractor.php', 'lib/Enricher.php', 'lib/Importer.php', 'lib/Api.php'];
-$missing = array_values(array_filter($need, fn($f) => !is_file(__DIR__ . '/' . $f)));
+$missing = array_values(array_filter($need, fn($f) => !is_file($base . '/' . $f)));
 if ($missing) {
     if (isset($_REQUEST['action'])) {
         if (!headers_sent()) header('Content-Type: application/json; charset=utf-8');
@@ -18,11 +20,11 @@ if ($missing) {
 }
 
 $GLOBALS['p2b_autoload_loaded'] = true; // fix warning global lama
-require_once __DIR__ . '/vendor/autoload.php';
-require_once __DIR__ . '/lib/Extractor.php';
-require_once __DIR__ . '/lib/Enricher.php';
-require_once __DIR__ . '/lib/Importer.php';
-require_once __DIR__ . '/lib/Api.php';
+require_once $base . '/vendor/autoload.php';
+require_once $base . '/lib/Extractor.php';
+require_once $base . '/lib/Enricher.php';
+require_once $base . '/lib/Importer.php';
+require_once $base . '/lib/Api.php';
 
 \PDF2Biblio\Api::boot();
 
@@ -31,4 +33,4 @@ if (isset($_REQUEST['action'])) {
     \PDF2Biblio\Api::handle(); // selalu exit
 }
 
-require __DIR__ . '/index.php';
+require $base . '/index.php';
