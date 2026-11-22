@@ -5,9 +5,12 @@ namespace PDF2Biblio;
 class Enricher
 {
     private static array $cache = [];
+    private static string $cacheDir = ''; // A4: cache persisten lintas request (tmp/api_*.cache)
+    private const CACHE_TTL = 604800; // 7 hari
 
     public static function enrich(array &$d, bool $wantCover, string $tmp, string $token, string $pdfPath): array
     {
+        self::$cacheDir = $tmp;
         $log = [];
         $d['_covers'] = [];
         $ol = null;
@@ -219,6 +222,12 @@ class Enricher
     private static function http(string $url): ?string
     {
         if (isset(self::$cache[$url])) return self::$cache[$url];
+        // A4: cache persisten 7 hari (JSON API maupun blob cover) → impor ulang cepat & tahan offline.
+        $key = self::$cacheDir !== '' ? self::$cacheDir . '/api_' . sha1($url) . '.cache' : '';
+        if ($key !== '' && is_file($key) && filemtime($key) > time() - self::CACHE_TTL) {
+            $c = @file_get_contents($key);
+            if ($c !== false && $c !== '') { self::$cache[$url] = $c; return $c; }
+        }
         usleep(150000); // sopan terhadap API
         $body = null;
         if (function_exists('curl_init')) {
@@ -243,6 +252,7 @@ class Enricher
             $b = @file_get_contents($url, false, $ctx);
             if ($b !== false) $body = $b;
         }
+        if ($body !== null && $key !== '') @file_put_contents($key, $body);
         self::$cache[$url] = $body;
         return $body;
     }

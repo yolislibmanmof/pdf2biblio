@@ -5,12 +5,13 @@ namespace PDF2Biblio;
 class Importer
 {
     private static array $cols = [];
+    private static string $err = ''; // FIX: pesan error query terakhir (mysqli PHP 8.1+ melempar exception meski @)
 
     private static function cols($dbs, string $t): array
     {
         if (!isset(self::$cols[$t])) {
             self::$cols[$t] = [];
-            $r = @$dbs->query("SHOW COLUMNS FROM `$t`");
+            try { $r = @$dbs->query("SHOW COLUMNS FROM `$t`"); } catch (\Throwable $e) { $r = false; }
             if ($r) while ($row = $r->fetch_assoc()) self::$cols[$t][] = $row['Field'];
         }
         return self::$cols[$t];
@@ -23,7 +24,7 @@ class Importer
 
     private static function one($dbs, string $sql): ?array
     {
-        $r = @$dbs->query($sql);
+        try { $r = @$dbs->query($sql); } catch (\Throwable $e) { return null; }
         return ($r && $r->num_rows) ? $r->fetch_assoc() : null;
     }
 
@@ -38,7 +39,14 @@ class Importer
             $cols[] = "`$k`"; $vals[] = "'" . self::e($dbs, $v) . "'";
         }
         if (!$cols) return 0;
-        return @$dbs->query("INSERT INTO `$t` (" . implode(',', $cols) . ") VALUES (" . implode(',', $vals) . ")") ? (int)$dbs->insert_id : 0;
+        try {
+            $ok = @$dbs->query("INSERT INTO `$t` (" . implode(',', $cols) . ") VALUES (" . implode(',', $vals) . ")");
+        } catch (\Throwable $e) {
+            self::$err = $e->getMessage();
+            return 0;
+        }
+        if (!$ok) { self::$err = (string)$dbs->error; return 0; }
+        return (int)$dbs->insert_id;
     }
 
     private static function master($dbs, string $t, string $idc, string $nc, string $name, array $extra = []): int
@@ -58,9 +66,19 @@ class Importer
         $nc = null;
         foreach ([$base . '_name', $base, 'name'] as $cand) if (in_array($cand, $c)) { $nc = $cand; break; }
         if (!$nc) return 0;
+        // FIX: PK tabel RDA SLiMS = 'id' (mst_content_type/mst_media_type/mst_carrier_type),
+        // sedangkan '<base>_id' hanya nama FK di biblio. Resolve dari kolom nyata.
+        $ic = null;
+        foreach ([$idc, 'id', $base . '_id'] as $cand) if (in_array($cand, $c)) { $ic = $cand; break; }
+        if (!$ic) return 0;
+        // FIX presisi: exact dulu (hindari 'text' tertangkap 'tactile text'), baru LIKE fallback.
         foreach ($names as $n) {
-            $row = self::one($dbs, "SELECT `$idc` FROM `$t` WHERE `$nc` LIKE '%" . self::e($dbs, $n) . "%' LIMIT 1");
-            if ($row) return (int)$row[$idc];
+            $row = self::one($dbs, "SELECT `$ic` FROM `$t` WHERE `$nc`='" . self::e($dbs, $n) . "' LIMIT 1");
+            if ($row) return (int)$row[$ic];
+        }
+        foreach ($names as $n) {
+            $row = self::one($dbs, "SELECT `$ic` FROM `$t` WHERE `$nc` LIKE '%" . self::e($dbs, $n) . "%' LIMIT 1");
+            if ($row) return (int)$row[$ic];
         }
         return 0;
     }
@@ -84,7 +102,7 @@ class Importer
     /** Webroot stabil (SWB SLiMS berubah tergantung script yang berjalan). */
     public static function webroot(): string
     {
-        $script = str_replace('\\', '/', $_SERVER['SCRIPT_NAME'] ?? '');
+        $script = str_replace('', '/', $_SERVER['SCRIPT_NAME'] ?? '');
         $root = preg_replace('#/(admin|plugins)/.*$#', '/', $script);
         if (!is_string($root) || $root === '') $root = '/';
         return rtrim($root, '/') . '/';
@@ -127,7 +145,7 @@ class Importer
         else unset($data['notes']);
 
         $bid = self::ins($dbs, 'biblio', $data);
-        if (!$bid) return ['ok'=>false, 'msg'=>'Gagal insert biblio: ' . $dbs->error];
+        if (!$bid) return ['ok'=>false, 'msg'=>'Gagal insert biblio: ' . (self::$err !== '' ? self::$err : $dbs->error)];
 
         $level = 1;
         foreach (array_slice(array_filter(array_map('trim', explode(';', $r['author'] ?? ''))), 0, 12) as $n) {

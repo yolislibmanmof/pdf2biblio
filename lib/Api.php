@@ -6,11 +6,16 @@ class Api
     private const JFLAG = JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE;
     private static int $uid = 0;
     private static string $tmp = '';
+    private static int $obLevel = 0; // A2: level buffer milik plugin (di atas buffer core)
 
     public static function boot(): void
     {
         if (!empty($GLOBALS['p2b_booted'])) return; // cegah BOOT dobel
         $GLOBALS['p2b_booted'] = true;
+
+        // A2: buffer milik plugin — notice/warning liar tidak akan mencemari JSON.
+        self::$obLevel = ob_get_level();
+        ob_start();
 
         // Container SLiMS TIDAK memulai sesi admin → kita start sendiri.
         // JANGAN require admin/default/session.inc.php: file itu butuh $sanitizer
@@ -37,7 +42,7 @@ class Api
             }
         }
 
-        // FIX bulk_save: body JSON TIDAK mengisi $_REQUEST/$_POST di PHP.
+        // Body JSON (bulk_save) TIDAK mengisi $_REQUEST/$_POST di PHP.
         // Parse sekali di sini agar router di semua pintu (index.php / manager.php / ajax.php)
         // melihat action + t. Api::save() tetap membaca php://input sendiri (stream boleh dibaca ulang).
         if (!isset($_REQUEST['action'])
@@ -51,7 +56,19 @@ class Api
 
         self::$tmp = dirname(__DIR__) . '/tmp';
         if (!is_dir(self::$tmp)) @mkdir(self::$tmp, 0775, true);
+        // A1: tutup akses web langsung ke tmp (PDF ber-hak-cipta + cover hanya lewat Api::cover).
+        if (is_dir(self::$tmp)) {
+            if (!is_file(self::$tmp . '/.htaccess')) {
+                @file_put_contents(self::$tmp . '/.htaccess',
+                    "# PDF2Biblio: tolak akses web langsung\n" .
+                    "<IfModule mod_authz_core.c>\nRequire all denied\n</IfModule>\n" .
+                    "<IfModule !mod_authz_core.c>\nOrder allow,deny\nDeny from all\n</IfModule>\n");
+            }
+            if (!is_file(self::$tmp . '/index.html')) @file_put_contents(self::$tmp . '/index.html', '');
+        }
         foreach (glob(self::$tmp . '/*') ?: [] as $f) {
+            $b = basename($f);
+            if ($b === 'index.html' || strpos($b, 'api_') === 0) continue; // A4: cache jangan dibuang
             if (is_file($f) && filemtime($f) < time() - 86400) @unlink($f);
         }
         self::lg('BOOT main ok PHP=' . PHP_VERSION . ' uri=' . ($_SERVER['REQUEST_URI'] ?? '-'));
@@ -71,12 +88,17 @@ class Api
 
     private static function lg(string $m): void
     {
-        @file_put_contents(dirname(__DIR__) . '/debug.log', date('Y-m-d H:i:s') . ' ' . $m . "\n", FILE_APPEND | LOCK_EX);
+        $f = dirname(__DIR__) . '/debug.log';
+        // A5: rotasi 1 generasi bila > 256 KB agar log tidak tumbuh tanpa batas.
+        if (is_file($f) && filesize($f) > 262144) @rename($f, $f . '.1');
+        @file_put_contents($f, date('Y-m-d H:i:s') . ' ' . $m . "\n", FILE_APPEND | LOCK_EX);
     }
 
     private static function out(array $a, int $code = 200, string $tag = ''): void
     {
         if ($tag !== '') self::lg('json out ' . $tag);
+        // A2: buang buffer plugin (dan apa pun yang terbuka setelah boot) sebelum JSON.
+        while (ob_get_level() > self::$obLevel) ob_end_clean();
         if (!headers_sent()) {
             http_response_code($code);
             header('Content-Type: application/json; charset=utf-8');
@@ -189,7 +211,16 @@ class Api
         if (!move_uploaded_file($f['tmp_name'], $dest)) self::out(['ok' => false, 'msg' => 'Gagal memindah file upload.'], 500, $action);
         self::lg('upload ok bytes=' . $f['size'] . ' forceNative=false');
 
+        // A3: hardening parser di call-site (port mesin legacy anti-crash):
+        // PCRE JIT rawan crash stack pada subjek PDF besar di Windows; beri napas memori/waktu.
+        $oldJit = (string)@ini_get('pcre.jit');
+        $oldMem = (string)@ini_get('memory_limit');
+        @ini_set('pcre.jit', '0');
+        @ini_set('memory_limit', '512M');
+        @set_time_limit(180);
         $d = Extractor::extract($dest, $f['name']);
+        @ini_set('pcre.jit', $oldJit);
+        @ini_set('memory_limit', $oldMem);
         self::lg('extract done engine=smalot pages=' . $d['pdf_pages']);
         $log = $d['log'] ?? [];
         unset($d['log']);
@@ -231,7 +262,13 @@ class Api
             if (!preg_match('/^[a-f0-9]{16}$/', $tk)) { $res[] = ['ok' => false, 'msg' => 'Token baris tidak valid.', 'token' => $tk]; continue; }
             $r['_pdf'] = self::$tmp . '/' . $tk . '.pdf';
             $r['_cover'] = self::$tmp . '/' . $tk . '.cover';
-            $o = Importer::save($r, $opts, $dbs, self::$uid ?: (int)($_SESSION['uid'] ?? 1));
+            // A2: isolasi per baris — satu PDF bermasalah tidak membatalkan seluruh batch.
+            try {
+                $o = Importer::save($r, $opts, $dbs, self::$uid ?: (int)($_SESSION['uid'] ?? 1));
+            } catch (\Throwable $e) {
+                $o = ['ok' => false, 'msg' => 'Error baris: ' . $e->getMessage()];
+                self::lg('ERROR row ' . $tk . ' ' . $e->getMessage());
+            }
             if (!empty($o['ok']) && empty($o['dup'])) { @unlink($r['_pdf']); @unlink($r['_cover']); }
             $o['token'] = $tk;
             self::lg('save ' . (!empty($o['ok']) ? (!empty($o['dup']) ? 'dup' : 'ok') : 'gagal') . ' #' . ($o['id'] ?? 0) . ' ' . ($o['msg'] ?? ''));
@@ -262,6 +299,8 @@ class Api
         $blob = (string)file_get_contents($f);
         $info = @getimagesizefromstring($blob);
         self::lg('cover serve ' . $k);
+        // A2: bersihkan buffer plugin sebelum blob gambar.
+        while (ob_get_level() > self::$obLevel) ob_end_clean();
         if (!headers_sent()) {
             header('Content-Type: ' . ($info['mime'] ?? 'image/jpeg'));
             header('Cache-Control: private, max-age=3600');

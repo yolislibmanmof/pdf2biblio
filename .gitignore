@@ -1,7 +1,7 @@
 /tmp/*
 !/tmp/.htaccess
+!/tmp/index.html
 /debug.log
+/debug.log.1
 /diag.json
 /head.txt
-/cli_test.php
-/dump_head.php

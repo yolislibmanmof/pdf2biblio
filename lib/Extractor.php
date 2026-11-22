@@ -47,6 +47,8 @@ class Extractor
         } catch (\Throwable $e) {
             $log[] = 'Parser gagal: ' . $e->getMessage() . ' — pakai nama file + perkayaan API.';
         }
+        // B1: normalisasi blok KDT multi-baris (label ⏎ : ⏎ nilai, gelar & ISBN terpecah baris).
+        foreach ($front as $k => $t) $front[$k] = self::kdtNormalize($t);
         $d['pdf_pages'] = $total;
         $page1 = $front[0] ?? '';
         $all = self::clean(implode("\n", $front));
@@ -89,7 +91,8 @@ class Extractor
         if ($d['title'] !== '' && !isset($d['sources']['title'])) $d['sources']['title'] = 'PDF';
 
         // ---- PENULIS ----
-        $raw = self::grab('/(?:Penulis|Pengarang|Penyusun|Authors?|Disusun\s+oleh|Ditulis\s+oleh)\s*[:\-]?\s*([^\r\n]{3,200})/iu', $copy);
+        $raw = self::authorBlock($copy); // B1: blok multi-baris sampai label berikutnya
+        if ($raw === '') $raw = self::grab('/(?:Penulis|Pengarang|Penyusun|Authors?|Disusun\s+oleh|Ditulis\s+oleh)\s*[:\-]?\s*([^\r\n]{3,200})/iu', $copy);
         if ($raw === '') $raw = self::grab('/\bOleh\s*[:\-]?\s*([A-Z][^\r\n]{3,150})/u', $page1);
         if ($raw === '') { $ma = self::metaVal($meta, 'Author'); if (self::saneAuthor($ma)) $raw = $ma; }
         if ($raw === '') $raw = self::grab('/(?:Editor|Penyunting)\s*[:\-]\s*([^\r\n]{3,150})/iu', $copy);
@@ -235,6 +238,31 @@ class Extractor
         return trim($t);
     }
 
+    /** B1: satukan label KDT yang terpisah baris ("Penulis ⏎ :  nama"), gelar & ISBN terpecah. */
+    private static function kdtNormalize(string $t): string
+    {
+        $t = preg_replace('/\s*\n\s*:\s*\n\s*/u', ': ', $t);
+        $t = preg_replace('/\s*\n\s*:/u', ':', $t);
+        $t = preg_replace('/\s*\n\s*(?=[,.;:\-–—])/u', '', $t);
+        $t = preg_replace('/([,.;:\-–—])\s*\n\s*/u', '$1 ', $t);
+        $t = preg_replace_callback('/ISBN\s*[:\-]?\s*([0-9][0-9\-\s]{9,30})/iu',
+            fn($m) => 'ISBN: ' . preg_replace('/[^0-9Xx]/', '', $m[1]), $t);
+        return $t;
+    }
+
+    /** B1: ambil blok penulis multi-baris sampai label berikutnya; baris → pemisah ';'. */
+    private static function authorBlock(string $copy): string
+    {
+        if (!preg_match('/(?:^|\n)\s*(?:Penulis|Pengarang|Penyusun|Authors?|Disusun\s+oleh|Ditulis\s+oleh)\s*[:\-]\s*/iu', $copy, $m, PREG_OFFSET_CAPTURE)) return '';
+        $start = $m[0][1] + strlen($m[0][0]);
+        $rest = substr($copy, $start);
+        if (preg_match('/\n\s*(?:Editor|Penyunting|ISBN|Penerbit|Diterbitkan|Cetakan|Hak\s+Cipta|Copyright|Kata\s+Kunci|Desain|Penata)\b/iu', $rest, $s, PREG_OFFSET_CAPTURE)) {
+            $rest = substr($rest, 0, $s[0][1]);
+        }
+        $rest = trim(mb_substr($rest, 0, 600));
+        return preg_replace('/\s*\n\s*/u', '; ', $rest);
+    }
+
     private static function grab(string $re, string $hay): string
     {
         return ($hay !== '' && preg_match($re, $hay, $m)) ? trim($m[1]) : '';
@@ -268,7 +296,7 @@ class Extractor
         if (mb_strlen($t) < 4) return false;
         if (preg_match('/^(Microsoft|Word|Untitled|Document|Scan|IMG_|DOC\d|Print|Layout|PowerPoint|Excel|Canva|InDesign)/i', $t)) return false;
         if (preg_match('/\.(docx?|indd|pdf|cdr|pptx?)$/i', $t)) return false;
-        if (preg_match('/^[A-Z]:\\\\|^\/Users\//', $t)) return false;
+        if (preg_match('/^[A-Z]:|^\/Users\//', $t)) return false;
         return true;
     }
 
