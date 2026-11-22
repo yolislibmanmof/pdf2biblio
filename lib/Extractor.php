@@ -10,6 +10,8 @@ class Extractor
 
     private const PUB_WORDS = 'Penerbit|Press|Publishing|Publishers|Media|Pustaka|Gramedia|Erlangga|Andi|Rajawali|Kencana|Salemba|Deepublish|Alfabeta|Bumi Aksara|Prenada|Widya|Insan|Cendekia|Literasi|Laksana|Jejak|Samudra|Bentang|Serambi|Mizan|Gema|Yrama|Wacana|Azka|Tahta|Gava|Bintang|Cahaya|Nusantara|Quantum|Nem|Republika|University|Universitas|Institut|Politeknik|Akademi|Kementerian|Balai|Badan|Lembaga';
 
+    private const SMALL_FILE_BYTES = 8388608; // 8 MB: batas aman smalot (port mesin legacy anti-crash)
+
     public static function blank(): array
     {
         return ['title'=>'','author'=>'','year'=>'','isbn'=>'','publisher'=>'','place'=>'',
@@ -29,25 +31,72 @@ class Extractor
         $stemSane = mb_strlen($stem) >= 8 && str_word_count($stem) >= 2 && !self::isPersonLine($stem);
 
         $meta = []; $front = []; $total = 0; $tmTitle = '';
-        try {
-            $parser = new \Smalot\PdfParser\Parser();
-            $pdf = $parser->parseFile($file);
-            $pages = $pdf->getPages();
-            $total = count($pages);
-            $meta = (array)$pdf->getDetails();
-            for ($i = 0; $i < min(12, $total); $i++) {
-                try { $front[$i] = self::clean($pages[$i]->getText()); } catch (\Throwable $e) { $front[$i] = ''; }
-            }
-            if ($total > 12) {
-                for ($i = $total - 3; $i < $total; $i++) {
-                    try { $front[$i] = self::clean($pages[$i]->getText()); } catch (\Throwable $e) {}
+        // Guard anti-crash: smalot hanya file kecil + Config limit; bendera crash memaksa native.
+        $hash = (string)@sha1_file($file);
+        $crashFlag = dirname(__DIR__) . '/tmp/crash_' . $hash . '.flag';
+        $useSmalot = $d['size'] <= self::SMALL_FILE_BYTES
+            && class_exists('\Smalot\PdfParser\Parser')
+            && !is_file($crashFlag);
+        if ($useSmalot) {
+            @file_put_contents($crashFlag, '1'); // bila proses mati di sini, flag tersisa → retry pakai native
+            try {
+                $config = class_exists('\Smalot\PdfParser\Config') ? new \Smalot\PdfParser\Config() : null;
+                if ($config) {
+                    if (method_exists($config, 'setRetainImageContent')) $config->setRetainImageContent(false);
+                    if (method_exists($config, 'setDecodeMemoryLimit')) $config->setDecodeMemoryLimit(64 * 1024 * 1024);
                 }
+                $parser = $config ? new \Smalot\PdfParser\Parser([], $config) : new \Smalot\PdfParser\Parser();
+                $pdf = $parser->parseFile($file);
+                $pages = $pdf->getPages();
+                $total = count($pages);
+                $meta = (array)$pdf->getDetails();
+                for ($i = 0; $i < min(12, $total); $i++) {
+                    try { $front[$i] = self::clean($pages[$i]->getText()); } catch (\Throwable $e) { $front[$i] = ''; }
+                }
+                if ($total > 12) {
+                    for ($i = $total - 3; $i < $total; $i++) {
+                        try { $front[$i] = self::clean($pages[$i]->getText()); } catch (\Throwable $e) {}
+                    }
+                }
+                try { $tmTitle = self::fontTitle(array_slice($pages, 0, 2)); } catch (\Throwable $e) {}
+                unset($pdf, $parser, $pages, $config);
+                if (function_exists('gc_collect_cycles')) gc_collect_cycles();
+                @unlink($crashFlag); // parse selesai sehat
+            } catch (\Throwable $e) {
+                @unlink($crashFlag);
+                $log[] = 'Parser gagal: ' . $e->getMessage() . ' — pakai parser native + perkayaan API.';
+                $useSmalot = false;
+                $front = [];
             }
-            try { $tmTitle = self::fontTitle(array_slice($pages, 0, 2)); } catch (\Throwable $e) {}
-        } catch (\Throwable $e) {
-            $log[] = 'Parser gagal: ' . $e->getMessage() . ' — pakai nama file + perkayaan API.';
+        } elseif (is_file($crashFlag)) {
+            $log[] = 'Smalot pernah crash pada file ini (bendera crash) — langsung parser native anti-crash.';
+        } else {
+            $log[] = 'File > 8 MB — parser native anti-crash (port mesin legacy).';
         }
-        // B1: normalisasi blok KDT multi-baris (label ⏎ : ⏎ nilai, gelar & ISBN terpecah baris).
+        if (!$useSmalot) {
+            try {
+                if (!class_exists('P2B_PdfExtractor')) {
+                    $pf = __DIR__ . '/PdfExtractor.php';
+                    if (is_file($pf)) {
+                        if (!defined('INDEX_AUTH')) define('INDEX_AUTH', 1);
+                        require_once $pf;
+                    }
+                }
+                if (class_exists('P2B_PdfExtractor')) {
+                    $nat = \P2B_PdfExtractor::extract($file, 90000, true);
+                    $total = (int)$nat['pages'];
+                    $meta = (array)$nat['meta'];
+                    $txt = self::clean((string)$nat['text']);
+                    foreach (mb_str_split($txt, 3000) as $i => $ch) $front[$i] = $ch;
+                    if (!$front) $front = [''];
+                    foreach (($nat['warnings'] ?? []) as $w) $log[] = $w;
+                    unset($nat, $txt);
+                }
+            } catch (\Throwable $e) {
+                $log[] = 'Parser native gagal: ' . $e->getMessage() . ' — mengandalkan metadata + nama file + API.';
+            }
+        }
+        // B1: normalisasi blok KDT multi-baris (label ⏎ :  nilai, gelar & ISBN terpecah baris).
         foreach ($front as $k => $t) $front[$k] = self::kdtNormalize($t);
         $d['pdf_pages'] = $total;
         $page1 = $front[0] ?? '';
