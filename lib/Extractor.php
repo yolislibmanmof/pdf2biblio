@@ -103,14 +103,22 @@ class Extractor
             if (self::isCity($m[1])) $imp = [trim($m[1]), trim($m[2]), $m[3]];
         }
 
-        // ---- PENERBIT (anti negara/kota, multiline-aware) ----
-        $pub = self::grab('/(?:Penerbit|Diterbitkan\s+oleh|Dipublikasikan\s+oleh|Diterbitkan\s+pertama\s+kali\s+oleh|Published\s+by)\s*[:\-]?\s*\n?\s*([^\r\n]{3,90})/iu', $copy);
-        if ($pub === '') $pub = self::grab('/(?:©|\(c\)|Copyright)\s*(?:\d{4}\s*)?(?:oleh|by|pada)?\s*[,:\-]?\s*\n?\s*([A-Z][^\r\n]{3,70})/iu', $copy);
-        if ($pub === '') $pub = self::scanPublisher($front, $copy);
-        if ($pub === '' && $imp) $pub = $imp[1];
-        $d['publisher'] = self::cleanPublisher($pub);
-        if ($d['publisher'] !== '') $d['sources']['publisher'] = 'PDF';
-        if ($d['publisher'] === '') $log[] = 'DEBUG teks hak cipta: ' . mb_substr(preg_replace('/\s+/u', ' ', $copy), 0, 1200);
+        // ---- PENERBIT (label wajib titik-dua; kandidat dibersihkan berantai) ----
+        $pubCands = [];
+        $pubCands[] = self::grab('/(?:^|\n)\s*(?:Penerbit|Diterbitkan\s+oleh|Dipublikasikan\s+oleh|Diterbitkan\s+pertama\s+kali\s+oleh|Published\s+by)\s*[:\-]\s*\n?\s*([^\r\n]{3,90})/iu', $copy);
+        $pubCands[] = self::grab('/\b(?:Penerbit|Diterbitkan\s+oleh|Dipublikasikan\s+oleh|Published\s+by)\s*[:\-]\s*\n?\s*([^\r\n]{3,90})/iu', $copy);
+        $pubCands[] = self::grab('/(?:©|\(c\)|Copyright)\s*(?:\d{4}\s*)?(?:oleh|by|pada)?\s*[,:\-]?\s*\n?\s*([A-Z][^\r\n]{3,70})/iu', $copy);
+        $pubCands[] = self::scanPublisher($front, $copy);
+        $pubCands[] = self::publisherFromDomain($copy . "\n" . $all);
+        if ($imp) $pubCands[] = $imp[1];
+        $pub = '';
+        foreach ($pubCands as $c) {
+            $c = self::cleanPublisher($c);
+            if ($c !== '') { $pub = $c; break; }
+        }
+        $d['publisher'] = $pub;
+        if ($pub !== '') $d['sources']['publisher'] = 'PDF';
+        if ($pub === '') $log[] = 'DEBUG teks hak cipta: ' . mb_substr(preg_replace('/\s+/u', ' ', $copy), 0, 1200);
 
         // ---- TEMPAT ----
         $place = self::grab('/(?:Tempat\s*(?:Terbit|Penerbitan)?|Kota\s+Terbit|Diterbitkan\s+di|Published\s+in)\s*[:\-]?\s*([A-Z][A-Za-z .\'-]{2,30})/iu', $copy);
@@ -296,6 +304,7 @@ class Extractor
     {
         $t = trim(preg_replace('/\s+/u', ' ', $t), " \t\n\r\0\x0B.,;:");
         if ($t !== '' && mb_strtoupper($t) === $t) $t = mb_convert_case($t, MB_CASE_TITLE, 'UTF-8');
+        $t = preg_replace_callback('/\s(Dan|Di|Ke|Dari|Untuk|Terhadap|Pada|Dalam|Atau|Yang|Dengan|Sebagai|Tanpa|Oleh|Bagi|Via|Versus)\b/u', fn($m) => ' ' . strtolower($m[1]), $t);
         return mb_substr($t, 0, 300);
     }
 
@@ -426,6 +435,8 @@ class Extractor
         $p = trim(preg_replace('/\s+/u', ' ', $p), " .,;:-");
         if (mb_strlen($p) < 3 || mb_strlen($p) > 80) return '';
         if (preg_match('/^(Dicetak|Percetakan|Printing)/i', $p)) return '';
+        if (!preg_match('/^[A-Z]/u', $p)) return '';
+        if (preg_match('/(tanpa izin|tertulis|dilarang|memperbanyak|memfotokopi|undang|hak cipta|dilindungi|all rights|reserved|sebagian atau seluruh)/i', $p)) return '';
         foreach (self::COUNTRIES as $c) if (strcasecmp($p, $c) === 0) return '';
         if (self::isCity($p)) return '';
         if (self::isPersonLine($p)) return '';
@@ -490,6 +501,42 @@ class Extractor
             }
         }
         return $best;
+    }
+
+        /** Fallback penerbit dari domain website/email di halaman hak cipta (nama penerbit sering hanya logo). */
+    private static function publisherFromDomain(string $hay): string
+    {
+        $map = [
+            'mediapenerbitindonesia' => 'PT Media Penerbit Indonesia',
+            'deepublish' => 'Deepublish',
+            'sonpedia' => 'Sonpedia Publishing',
+            'eurekamediaaksara' => 'CV. Eureka Media Aksara',
+            'mediasainsindonesia' => 'CV. Media Sains Indonesia',
+            'globaleksekutifteknologi' => 'PT. Global Eksekutif Teknologi',
+            'yayasankitamenulis' => 'Yayasan Kita Menulis',
+            'radjapublika' => 'CV. Radja Publika',
+            'heipublishing' => 'CV. Hei Publishing',
+            'pusdikra' => 'CV. Pusdikra Mitra Jaya',
+        ];
+        $hosts = [];
+        if (preg_match_all('/(?:https?:\/\/|www\.)([a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,})/i', $hay, $m)) $hosts = array_merge($hosts, $m[1]);
+        if (preg_match_all('/[a-z0-9._%+-]+@([a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,})/i', $hay, $m)) $hosts = array_merge($hosts, $m[1]);
+        $skip = ['gmail','yahoo','hotmail','outlook','wordpress','wix','blogspot','google','facebook','instagram','twitter','youtube','tiktok','linkedin','wa','linktr'];
+        foreach ($hosts as $h) {
+            $h = strtolower(preg_replace('/^www\./', '', $h));
+            $label = preg_replace('/\.(co\.id|or\.id|ac\.id|go\.id|com|id|net|org|info|biz|me|io)$/', '', $h);
+            $label = preg_replace('/\.[a-z]{2,}$/', '', $label);
+            $seg = explode('.', $label);
+            $label = end($seg);
+            if ($label === '' || in_array($label, $skip, true)) continue;
+            if (isset($map[$label])) return $map[$label];
+            $parts = preg_split('/(media|penerbit|press|publishing|publisher|pustaka|buku|sains|global|teknologi|aksara|eureka|sonpedia|deepublish|indonesia|nusantara|cendekia|literasi|laksana|jejak|samudra|bentang|serambi|mizan|gema|wacana|azka|tahta|bintang|cahaya|quantum|widya|insan|prenada|alfabeta|salemba|kencana|rajawali|erlangga|gramedia|yayasan|lembaga|badan|jaya|mitra|utama|sejahtera|abadi|karya|cipta|mandiri|persada|raya|sinar|harapan|bersama|edukasi)/i', $label, -1, PREG_SPLIT_DELIM_CAPTURE);
+            $parts = array_values(array_filter(array_map('trim', $parts), fn($x) => $x !== ''));
+            if (count($parts) < 2) continue;
+            $name = implode(' ', array_map(fn($x) => ucfirst(strtolower($x)), $parts));
+            if (mb_strlen($name) >= 6 && mb_strlen($name) <= 60) return $name;
+        }
+        return '';
     }
 
     private static function isCity(string $s): bool
