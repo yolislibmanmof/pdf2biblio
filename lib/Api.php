@@ -1,6 +1,16 @@
 <?php
 namespace PDF2Biblio;
 
+/**
+ * PDF2Biblio — router AJAX + gerbang sesi (v2.5.0).
+ * Perubahan penting:
+ *  - readJson()/readBlob(): tidak pernah membaca berkas yang belum ada.
+ *    Error handler SLiMS mengabaikan "@", jadi file_get_contents ke berkas hilang = HTTP 500.
+ *  - set_error_handler() milik plugin: notice/warning masuk debug.log, bukan halaman error.
+ *  - uid diresolusi dari username bila sesi tidak menyimpan uid (antrian tidak lagi bercampur).
+ *  - clear_queue memeriksa kepemilikan token.
+ *  - diag() dihapus (tidak pernah ter-route, membocorkan source core & isi sesi).
+ */
 class Api
 {
     private const JFLAG = JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE;
@@ -49,6 +59,15 @@ class Api
             }
         }
 
+        // Error handler SLiMS mengabaikan "@" dan bisa mencetak halaman error + exit(500).
+        // Ambil alih: notice/warning dicatat ke debug.log, tidak dicetak, tidak dilempar.
+        // Dipasang setelah merge JSON agar bulk_save (action di body) ikut terlindungi.
+        set_error_handler(function ($no, $str, $file = '', $line = 0) {
+            if (!(error_reporting() & $no)) return true; // hormati operator @
+            self::lg('PHP[' . $no . '] ' . $str . ' @ ' . basename((string)$file) . ':' . $line);
+            return true;
+        });
+
         self::$tmp = dirname(__DIR__) . '/tmp';
         if (!is_dir(self::$tmp)) @mkdir(self::$tmp, 0775, true);
         // A1: tutup akses web langsung ke tmp.
@@ -87,6 +106,24 @@ class Api
         @file_put_contents($f, date('Y-m-d H:i:s') . ' ' . $m . "\n", FILE_APPEND | LOCK_EX);
     }
 
+    /** Baca JSON hanya bila berkas benar-benar ada (error handler SLiMS mengabaikan "@"). */
+    private static function readJson(string $path): ?array
+    {
+        if ($path === '' || !is_file($path) || !is_readable($path)) return null;
+        $s = @file_get_contents($path);
+        if ($s === false || $s === '') return null;
+        $j = json_decode($s, true);
+        return is_array($j) ? $j : null;
+    }
+
+    /** Baca isi berkas biner dengan pengaman yang sama. $max = 0 berarti seluruh berkas. */
+    private static function readBlob(string $path, int $max = 0): string
+    {
+        if ($path === '' || !is_file($path) || !is_readable($path)) return '';
+        $s = $max > 0 ? @file_get_contents($path, false, null, 0, $max) : @file_get_contents($path);
+        return $s === false ? '' : (string)$s;
+    }
+
     private static function out(array $a, int $code = 200, string $tag = ''): void
     {
         if ($tag !== '') self::lg('json out ' . $tag);
@@ -113,7 +150,12 @@ class Api
     {
         $dbs = $GLOBALS['dbs'] ?? null;
         if (!$dbs) {
-            $dbs = @new \mysqli(DB_HOST, DB_USERNAME, DB_PASSWORD, DB_NAME);
+            // PHP 8.1+ melempar mysqli_sql_exception meski memakai @.
+            try {
+                $dbs = new \mysqli(DB_HOST, DB_USERNAME, DB_PASSWORD, DB_NAME);
+            } catch (\Throwable $e) {
+                self::out(['ok' => false, 'msg' => 'Koneksi DB gagal: ' . $e->getMessage()], 500, 'db');
+            }
             if ($dbs->connect_error) self::out(['ok' => false, 'msg' => 'Koneksi DB gagal: ' . $dbs->connect_error], 500, 'db');
             $dbs->set_charset('utf8mb4');
             $GLOBALS['dbs'] = $dbs;
@@ -164,16 +206,21 @@ class Api
             self::out(['ok' => false, 'msg' => 'Sesi admin tidak terbaca. Login ulang.'], 401, $action);
         }
         self::$uid = (int)($_SESSION['uid'] ?? 0);
-        self::lg('auth ok');
-
-        if ($action !== 'diag') {
-            $csrf = (string)($_REQUEST['t'] ?? '');
-            if (empty($_SESSION['p2b_csrf']) || !hash_equals($_SESSION['p2b_csrf'], $csrf)) {
-                self::lg('token FAIL');
-                self::out(['ok' => false, 'msg' => 'Token CSRF tidak valid. Muat ulang halaman plugin.'], 403, $action);
-            }
-            self::lg('token ok');
+        // Sebagian konfigurasi SLiMS tidak menyimpan uid di sesi. Tanpa ini uid=0 dan
+        // antrian semua admin bercampur jadi satu.
+        if (self::$uid === 0 && !empty($_SESSION['username'])) {
+            $d = self::dbs();
+            $u = self::rows($d, "SELECT user_id FROM user WHERE username='" . $d->real_escape_string((string)$_SESSION['username']) . "' LIMIT 1");
+            if ($u) self::$uid = (int)$u[0]['user_id'];
         }
+        self::lg('auth ok uid=' . self::$uid);
+
+        $csrf = (string)($_REQUEST['t'] ?? '');
+        if (empty($_SESSION['p2b_csrf']) || !hash_equals($_SESSION['p2b_csrf'], $csrf)) {
+            self::lg('token FAIL');
+            self::out(['ok' => false, 'msg' => 'Token CSRF tidak valid. Muat ulang halaman plugin.'], 403, $action);
+        }
+        self::lg('token ok');
 
         try {
             switch ($action) {
@@ -194,39 +241,12 @@ class Api
         }
     }
 
-        private static function resetParser(): void
+    private static function resetParser(): void
     {
         require_once __DIR__ . '/ParseRunner.php';
         $n = \PDF2Biblio\ParseRunner::resetFlags();
         self::lg('reset_parser flags=' . $n);
         self::out(['ok' => true, 'msg' => $n . ' bendera crash dihapus. Deteksi PHP CLI diulang pada unggah berikutnya.'], 200, 'reset_parser');
-    }
-
-    private static function diag(): void
-    {
-        $files = [];
-        foreach (['vendor/autoload.php','lib/Extractor.php','lib/Enricher.php','lib/Importer.php','lib/Api.php','index.php','manager.php','ajax.php','pdf2biblio.plugin.php'] as $f) {
-            $p = dirname(__DIR__) . '/' . $f;
-            $files[$f] = is_file($p) ? filesize($p) : false;
-        }
-        $methods = null; $psrc = null;
-        if (class_exists('SLiMS\Plugins')) {
-            $r = new \ReflectionClass('SLiMS\Plugins');
-            $methods = array_map(fn($m) => $m->getName(), $r->getMethods());
-            $pf = $r->getFileName();
-            if ($pf && is_file($pf)) $psrc = substr((string)file_get_contents($pf), 0, 6000);
-        }
-        $csrc = is_file(SB . 'admin/plugin_container.php') ? substr((string)file_get_contents(SB . 'admin/plugin_container.php'), 0, 6000) : null;
-        self::out([
-            'ok' => true, 'php' => PHP_VERSION, 'SB' => SB, 'SWB' => defined('SWB') ? SWB : null, 'DIR' => dirname(__DIR__),
-            'files' => $files,
-            'dir' => scandir(dirname(__DIR__)),
-            'lib' => is_dir(dirname(__DIR__) . '/lib') ? scandir(dirname(__DIR__) . '/lib') : null,
-            'session_keys' => array_keys($_SESSION),
-            'uid' => $_SESSION['uid'] ?? null, 'username' => $_SESSION['username'] ?? null,
-            'get' => $_GET, 'uri' => $_SERVER['REQUEST_URI'] ?? null,
-            'plugins_methods' => $methods, 'plugins_src' => $psrc, 'container_src' => $csrc,
-        ], 200, 'diag');
     }
 
     private static function extract(): void
@@ -235,16 +255,16 @@ class Api
         $f = $_FILES['pdf'] ?? null;
         if (!$f || $f['error'] !== UPLOAD_ERR_OK) self::out(['ok' => false, 'msg' => 'Upload gagal/kosong.'], 400, $action);
         if ($f['size'] > 64 * 1024 * 1024) self::out(['ok' => false, 'msg' => 'File > 64 MB.'], 400, $action);
-        $head = (string)file_get_contents($f['tmp_name'], false, null, 0, 1024);
+        $head = self::readBlob((string)$f['tmp_name'], 1024);
         if (strpos($head, '%PDF-') === false) self::out(['ok' => false, 'msg' => 'Bukan PDF valid: ' . $f['name']], 400, $action);
 
         // B5: dedupe upload berdasarkan hash isi file — file sama tidak diekstrak ulang.
         $hash = (string)@sha1_file($f['tmp_name']);
         if ($hash !== '') {
-            $old = json_decode((string)@file_get_contents(self::$tmp . '/h_' . $hash . '.json'), true);
+            $old = self::readJson(self::$tmp . '/h_' . $hash . '.json');
             $otk = (string)($old['token'] ?? '');
-            if (preg_match('/^[a-f0-9]{16}$/', $otk) && is_file(self::$tmp . '/' . $otk . '.json')) {
-                $q = json_decode((string)@file_get_contents(self::$tmp . '/' . $otk . '.json'), true);
+            if (preg_match('/^[a-f0-9]{16}$/', $otk)) {
+                $q = self::readJson(self::$tmp . '/' . $otk . '.json');
                 if (is_array($q) && (int)($q['uid'] ?? -1) === self::$uid && !empty($q['row'])) {
                     $row = $q['row'];
                     $row['cover_url'] = is_file(self::$tmp . '/' . $otk . '.cover') ? self::url(['action' => 'cover', 'k' => $otk]) : '';
@@ -259,7 +279,7 @@ class Api
         $dest = self::$tmp . '/' . $token . '.pdf';
         if (!move_uploaded_file($f['tmp_name'], $dest)) self::out(['ok' => false, 'msg' => 'Gagal memindah file upload.'], 500, $action);
         if ($hash !== '') @file_put_contents(self::$tmp . '/h_' . $hash . '.json', json_encode(['token' => $token]));
-        self::lg('upload ok bytes=' . $f['size'] . ' forceNative=false');
+        self::lg('upload ok bytes=' . $f['size']);
 
         // A3: hardening parser di call-site (port mesin legacy anti-crash).
         $oldJit = (string)@ini_get('pcre.jit');
@@ -268,19 +288,19 @@ class Api
         @ini_set('memory_limit', '512M');
         @set_time_limit(180);
         require_once __DIR__ . '/ParseRunner.php';
-        $d = \PDF2Biblio\ParseRunner::extract($dest, $f['name']);
+        $d = \PDF2Biblio\ParseRunner::extract($dest, (string)$f['name']);
         @ini_set('pcre.jit', $oldJit);
         @ini_set('memory_limit', $oldMem);
         $pi = \PDF2Biblio\ParseRunner::info();
-        self::lg('extract done engine=' . ($pi['engine'] ?: '?') . ' phpcli=' . ($pi['php'] ?: '-') . ' pages=' . $d['pdf_pages']);
-        $log = $d['log'] ?? [];
+        self::lg('extract done engine=' . ($pi['engine'] ?: '?') . ' phpcli=' . ($pi['php'] ?: '-') . ' pages=' . ($d['pdf_pages'] ?? 0));
+        $log = (array)($d['log'] ?? []);
         unset($d['log']);
         $log[] = 'Ekstrak: ' . $f['name'];
 
         if (!empty($_POST['enrich'])) {
             $log = array_merge($log, Enricher::enrich($d, !empty($_POST['cover']), self::$tmp, $token, $dest));
         }
-        self::lg('map done title=' . $d['title'] . ' | isbn=' . $d['isbn'] . ' | pub=' . $d['publisher'] . ' | place=' . $d['place'] . ' | year=' . $d['year']);
+        self::lg('map done title=' . ($d['title'] ?? '') . ' | isbn=' . ($d['isbn'] ?? '') . ' | pub=' . ($d['publisher'] ?? '') . ' | place=' . ($d['place'] ?? '') . ' | year=' . ($d['year'] ?? ''));
 
         $coverUrl = '';
         if (is_file(self::$tmp . '/' . $token . '.cover')) {
@@ -294,8 +314,8 @@ class Api
         $row = array_intersect_key($d, array_flip($fields));
         $row['token'] = $token;
         $row['cover_url'] = $coverUrl;
-        $filled = count(array_filter([$row['title'], $row['author'], $row['isbn'], $row['publisher'], $row['place'], $row['year']]));
-        $log[] = "OK: {$row['title']} — $filled/6 field inti terisi ({$row['confidence']}%).";
+        $filled = count(array_filter([$row['title'] ?? '', $row['author'] ?? '', $row['isbn'] ?? '', $row['publisher'] ?? '', $row['place'] ?? '', $row['year'] ?? '']));
+        $log[] = 'OK: ' . ($row['title'] ?? '') . ' — ' . $filled . '/6 field inti terisi (' . ($row['confidence'] ?? 0) . '%).';
         $row['log'] = $log;
         // B5: manifest antrian per sesi (tahan refresh; TTL 24 jam via cleanup boot).
         @file_put_contents(self::$tmp . '/' . $token . '.json', json_encode(['uid' => self::$uid, 'created' => time(), 'row' => $row], self::JFLAG));
@@ -306,11 +326,11 @@ class Api
     {
         $action = 'bulk_save';
         $in = json_decode((string)file_get_contents('php://input'), true);
-        if (!is_array($in) || empty($in['rows'])) self::out(['ok' => false, 'msg' => 'Payload kosong.'], 400, $action);
+        if (!is_array($in) || empty($in['rows']) || !is_array($in['rows'])) self::out(['ok' => false, 'msg' => 'Payload kosong.'], 400, $action);
         $dbs = self::dbs();
         self::ensureManifest($dbs);
         $oo = (array)($in['opts'] ?? []);
-        $label = mb_substr(trim(preg_replace('/[^\p{L}\p{N} _.\-]/u', '', (string)($oo['label'] ?? ''))), 0, 60);
+        $label = mb_substr(trim((string)preg_replace('/[^\p{L}\p{N} _.\-]/u', '', (string)($oo['label'] ?? ''))), 0, 60);
         if ($label === '') $label = 'p2b-' . date('Ymd-His');
         $batch = bin2hex(random_bytes(8));
         $opts = [
@@ -325,20 +345,21 @@ class Api
         $res = [];
         $count = ['ok' => 0, 'dup' => 0, 'gagal' => 0];
         foreach ($in['rows'] as $r) {
+            if (!is_array($r)) { $count['gagal']++; $res[] = ['ok' => false, 'msg' => 'Baris tidak valid.', 'token' => '']; continue; }
             $tk = (string)($r['token'] ?? '');
             if (!preg_match('/^[a-f0-9]{16}$/', $tk)) { $res[] = ['ok' => false, 'msg' => 'Token baris tidak valid.', 'token' => $tk]; $count['gagal']++; continue; }
             $r['_pdf'] = self::$tmp . '/' . $tk . '.pdf';
             $r['_cover'] = self::$tmp . '/' . $tk . '.cover';
             // A2: isolasi per baris — satu PDF bermasalah tidak membatalkan seluruh batch.
             try {
-                $o = Importer::save($r, $opts, $dbs, self::$uid ?: (int)($_SESSION['uid'] ?? 1));
+                $o = Importer::save($r, $opts, $dbs, self::$uid);
             } catch (\Throwable $e) {
                 $o = ['ok' => false, 'msg' => 'Error baris: ' . $e->getMessage()];
                 self::lg('ERROR row ' . $tk . ' ' . $e->getMessage());
             }
             if (!empty($o['ok'])) {
                 @unlink($r['_pdf']); @unlink($r['_cover']);
-                @unlink(self::$tmp . '/' . $tk . '.json'); // B5: baris tersimpan keluar dari antrian
+                @unlink(self::$tmp . '/' . $tk . '.json'); // B5: baris selesai keluar dari antrian
             }
             $o['token'] = $tk;
             $st = !empty($o['ok']) ? (!empty($o['dup']) ? 'dup' : 'ok') : 'gagal';
@@ -351,7 +372,7 @@ class Api
                 . $dbs->real_escape_string(mb_substr((string)($o['msg'] ?? ''), 0, 255)) . "', '" . date('Y-m-d H:i:s') . "')");
             $res[] = $o;
         }
-        self::exec($dbs, "UPDATE plugin_pdf2biblio_batch SET summary='" . $dbs->real_escape_string(json_encode($count, self::JFLAG)) . "' WHERE batch_id='" . $dbs->real_escape_string($batch) . "'");
+        self::exec($dbs, "UPDATE plugin_pdf2biblio_batch SET summary='" . $dbs->real_escape_string((string)json_encode($count, self::JFLAG)) . "' WHERE batch_id='" . $dbs->real_escape_string($batch) . "'");
         self::out(['ok' => true, 'results' => $res, 'batch_id' => $batch, 'label' => $label, 'count' => $count], 200, $action);
     }
 
@@ -362,6 +383,8 @@ class Api
         if (is_string($tokens)) $tokens = [$tokens];
         foreach ((array)$tokens as $t) {
             if (!preg_match('/^[a-f0-9]{16}$/', (string)$t)) continue;
+            $q = self::readJson(self::$tmp . '/' . $t . '.json');
+            if ($q !== null && (int)($q['uid'] ?? -1) !== self::$uid) continue; // bukan milik sesi ini
             @unlink(self::$tmp . '/' . $t . '.pdf');
             @unlink(self::$tmp . '/' . $t . '.cover');
             @unlink(self::$tmp . '/' . $t . '.json'); // B5
@@ -375,7 +398,7 @@ class Api
         $rows = [];
         foreach (glob(self::$tmp . '/*.json') ?: [] as $f) {
             if (!preg_match('/^[a-f0-9]{16}\.json$/', basename($f))) continue;
-            $q = json_decode((string)@file_get_contents($f), true);
+            $q = self::readJson($f);
             if (!is_array($q) || (int)($q['uid'] ?? -1) !== self::$uid || empty($q['row'])) continue;
             $row = $q['row'];
             $tk = (string)($row['token'] ?? '');
@@ -414,7 +437,7 @@ class Api
         foreach (self::rows($dbs, "SELECT batch_id, label, created_at, summary FROM plugin_pdf2biblio_batch WHERE uid=" . self::$uid . " ORDER BY created_at DESC LIMIT 20") as $b) {
             $c = ['ok' => 0, 'dup' => 0, 'gagal' => 0];
             foreach (self::rows($dbs, "SELECT status, COUNT(*) AS n FROM plugin_pdf2biblio_log WHERE batch_id='" . $dbs->real_escape_string($b['batch_id']) . "' GROUP BY status") as $x) {
-                $c[$x['status']] = (int)$x['n'];
+                if (isset($c[$x['status']])) $c[$x['status']] = (int)$x['n'];
             }
             $out[] = ['batch_id' => $b['batch_id'], 'label' => $b['label'], 'created_at' => $b['created_at'], 'count' => $c];
         }
@@ -432,7 +455,7 @@ class Api
         if ((string)($_REQUEST['yes'] ?? '') !== '1') self::out(['ok' => false, 'msg' => 'Konfirmasi diperlukan (yes=1).'], 400, $action);
         $b = self::rows($dbs, "SELECT batch_id, uid, label FROM plugin_pdf2biblio_batch WHERE batch_id='" . $dbs->real_escape_string($batch) . "' LIMIT 1");
         if (!$b) self::out(['ok' => false, 'msg' => 'Batch tidak ditemukan.'], 404, $action);
-        if ((int)$b[0]['uid'] !== self::$uid && self::$uid > 0) self::out(['ok' => false, 'msg' => 'Batch milik admin lain.'], 403, $action);
+        if ((int)$b[0]['uid'] !== self::$uid) self::out(['ok' => false, 'msg' => 'Batch milik admin lain.'], 403, $action);
         $deleted = 0;
         foreach (self::rows($dbs, "SELECT biblio_id FROM plugin_pdf2biblio_log WHERE batch_id='" . $dbs->real_escape_string($batch) . "' AND status='ok' AND biblio_id>0") as $x) {
             $bid = (int)$x['biblio_id'];
@@ -460,8 +483,8 @@ class Api
         $k = (string)($_GET['k'] ?? '');
         if (!preg_match('/^[a-f0-9]{16}$/', $k)) self::out(['ok' => false, 'msg' => 'Token cover tidak valid.'], 400, 'cover');
         $f = self::$tmp . '/' . $k . '.cover';
-        if (!is_file($f)) self::out(['ok' => false, 'msg' => 'Cover tidak ada.'], 404, 'cover');
-        $blob = (string)file_get_contents($f);
+        $blob = self::readBlob($f);
+        if ($blob === '') self::out(['ok' => false, 'msg' => 'Cover tidak ada.'], 404, 'cover');
         $info = @getimagesizefromstring($blob);
         self::lg('cover serve ' . $k);
         while (ob_get_level() > self::$obLevel) ob_end_clean();

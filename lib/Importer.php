@@ -1,7 +1,16 @@
 <?php
 namespace PDF2Biblio;
 
-/** Penyimpanan relasional penuh ke SLiMS — INSERT dinamis (kompatibel skema lama/baru). */
+/**
+ * PDF2Biblio — penyimpanan relasional penuh ke SLiMS (v2.5.0).
+ * INSERT dinamis (kompatibel skema lama/baru).
+ * Perubahan penting:
+ *  - biblio.labels TIDAK ditulis: kolom itu berisi array terserialisasi (unserialize di core).
+ *  - ISBN divalidasi (checksum) sebelum masuk biblio & dipakai deteksi duplikat.
+ *  - syncIndex() mengembalikan status; gagal indeks dilaporkan, tidak diam-diam.
+ *  - webroot() memperbaiki str_replace('' , ...) yang selama ini no-op.
+ *  - slug() null-safe (preg bisa null pada UTF-8 rusak; trim(null) deprecated di PHP 8.2).
+ */
 class Importer
 {
     private static array $cols = [];
@@ -94,14 +103,26 @@ class Importer
 
     private static function slug(string $t): string
     {
-        $s = preg_replace('/[^\p{L}\p{N}]+/u', '-', mb_strtolower($t));
+        $s = (string)preg_replace('/[^\p{L}\p{N}]+/u', '-', mb_strtolower($t));
         return mb_substr(trim($s, '-'), 0, 60) ?: 'buku';
+    }
+
+    /** ISBN bersih & valid checksum; string kosong bila tidak valid. */
+    private static function normIsbn(string $raw): string
+    {
+        $n = strtoupper((string)preg_replace('/[^0-9Xx]/', '', $raw));
+        if (class_exists('\PDF2Biblio\Extractor')) {
+            if (strlen($n) === 13 && Extractor::isbn13($n)) return $n;
+            if (strlen($n) === 10 && Extractor::isbn10($n)) return Extractor::to13($n);
+            return '';
+        }
+        return (strlen($n) === 13 || strlen($n) === 10) ? $n : '';
     }
 
     /** Webroot stabil (SWB SLiMS berubah tergantung script yang berjalan). */
     public static function webroot(): string
     {
-        $script = str_replace('', '/', $_SERVER['SCRIPT_NAME'] ?? '');
+        $script = str_replace('\\', '/', $_SERVER['SCRIPT_NAME'] ?? '');
         $root = preg_replace('#/(admin|plugins)/.*$#', '/', $script);
         if (!is_string($root) || $root === '') $root = '/';
         return rtrim($root, '/') . '/';
@@ -154,18 +175,18 @@ class Importer
         if (!self::cols($dbs, 'item')) return [];
         $collId = (int)($o['coll_type'] ?? 0) ?: self::firstId($dbs, 'mst_collection_type', 'coll_type_id');
         $locId  = (int)($o['location'] ?? 0) ?: self::firstId($dbs, 'mst_location', 'location_id');
-        $prefix = substr(preg_replace('/[^A-Za-z0-9]/', '', (string)($o['item_prefix'] ?? 'P2B')), 0, 6);
-        $code = '';
+        $prefix = substr((string)preg_replace('/[^A-Za-z0-9]/', '', (string)($o['item_prefix'] ?? 'P2B')), 0, 6);
+        $code = ''; $copyNo = 1;
         for ($n = 1; $n <= 50; $n++) {
             $cand = $prefix . str_pad((string)$bid, 7, '0', STR_PAD_LEFT) . '-' . $n;
-            if (!self::one($dbs, "SELECT item_id FROM item WHERE item_code='" . self::e($dbs, $cand) . "' LIMIT 1")) { $code = $cand; break; }
+            if (!self::one($dbs, "SELECT item_id FROM item WHERE item_code='" . self::e($dbs, $cand) . "' LIMIT 1")) { $code = $cand; $copyNo = $n; break; }
         }
         if ($code === '') return [];
         $iid = self::ins($dbs, 'item', [
             'biblio_id' => $bid, 'item_code' => $code,
             'call_number' => ($r['call_number'] ?? '') !== '' ? $r['call_number'] : ($r['classification'] ?? ''),
             'coll_type_id' => $collId ?: null, 'location_id' => $locId ?: null,
-            'status' => self::itemStatus($dbs), 'copy_no' => $n ?? 1,
+            'status' => self::itemStatus($dbs), 'copy_no' => $copyNo,
             'input_date' => $now, 'last_update' => $now, 'uid' => $uid,
         ]);
         if (!$iid) return [];
@@ -177,11 +198,11 @@ class Importer
     }
 
     /** B2: upsert baris search_biblio agar judul impor langsung terindeks pencarian OPAC. */
-    private static function syncIndex($dbs, int $bid, array $r, array $authorNames, array $topicNames, array $ids, string $label, array $item, string $cname, string $now): void
+    private static function syncIndex($dbs, int $bid, array $r, array $authorNames, array $topicNames, array $ids, string $label, array $item, string $cname, string $now): bool
     {
-        if (!self::cols($dbs, 'search_biblio')) return;
+        if (!self::cols($dbs, 'search_biblio')) return false;
         try { @$dbs->query("DELETE FROM search_biblio WHERE biblio_id=$bid"); } catch (\Throwable $e) {}
-        self::ins($dbs, 'search_biblio', [
+        $id = self::ins($dbs, 'search_biblio', [
             'biblio_id' => $bid,
             'title' => $r['title'] ?? '', 'edition' => $r['edition'] ?? '', 'isbn_issn' => $r['isbn'] ?? '',
             'author' => implode('; ', $authorNames), 'topic' => implode('; ', $topicNames),
@@ -196,28 +217,33 @@ class Importer
             'notes' => $r['notes'] ?? '', 'series_title' => $r['series'] ?? '',
             'items' => $item['code'] ?? '', 'collection_types' => $item['coll'] ?? '',
             'call_number' => $r['call_number'] ?? '', 'opac_hide' => 0, 'promoted' => 0,
-            'labels' => $label, 'collation' => $r['collation'] ?? '', 'image' => $cname,
+            'labels' => '', 'collation' => $r['collation'] ?? '', 'image' => $cname,
             'input_date' => $now, 'last_update' => $now,
         ]);
+        if (!$id) self::$err = 'search_biblio: ' . (self::$err !== '' ? self::$err : (string)$dbs->error);
+        return $id > 0;
     }
 
     public static function save(array $r, array $o, $dbs, int $uid): array
     {
         $now = date('Y-m-d H:i:s');
-        $title = trim($r['title'] ?? '');
+        $title = trim((string)($r['title'] ?? ''));
         if ($title === '') return ['ok'=>false, 'msg'=>'Judul kosong.'];
-        $isbn = strtoupper(preg_replace('/[^0-9Xx]/', '', $r['isbn'] ?? ''));
+
+        $isbnRaw = strtoupper((string)preg_replace('/[^0-9Xx]/', '', (string)($r['isbn'] ?? '')));
+        $isbn = self::normIsbn($isbnRaw);
+        $isbnNote = ($isbnRaw !== '' && $isbn === '') ? ' — ISBN "' . $isbnRaw . '" tidak valid, dikosongkan' : '';
 
         if (!empty($o['skip_dup'])) {
             $dup = null;
             if ($isbn !== '') $dup = self::one($dbs, "SELECT biblio_id FROM biblio WHERE isbn_issn='" . self::e($dbs, $isbn) . "' LIMIT 1");
             if (!$dup && ($r['year'] ?? '') !== '')
                 $dup = self::one($dbs, "SELECT biblio_id FROM biblio WHERE LOWER(title)='" . self::e($dbs, mb_strtolower($title)) . "' AND publish_year='" . self::e($dbs, $r['year']) . "' LIMIT 1");
-            if ($dup) return ['ok'=>true, 'dup'=>true, 'id'=>(int)$dup['biblio_id'], 'msg'=>'Duplikat — dilewati (#' . $dup['biblio_id'] . ').'];
+            if ($dup) return ['ok'=>true, 'dup'=>true, 'id'=>(int)$dup['biblio_id'], 'msg'=>'Duplikat — dilewati (#' . $dup['biblio_id'] . ').' . $isbnNote];
         }
 
-        $pubId = self::master($dbs, 'mst_publisher', 'publisher_id', 'publisher_name', $r['publisher'] ?? '');
-        $placeId = self::master($dbs, 'mst_place', 'place_id', 'place_name', $r['place'] ?? '');
+        $pubId = self::master($dbs, 'mst_publisher', 'publisher_id', 'publisher_name', (string)($r['publisher'] ?? ''));
+        $placeId = self::master($dbs, 'mst_place', 'place_id', 'place_name', (string)($r['place'] ?? ''));
         $attach = !empty($o['attach']) && !empty($r['_pdf']) && is_file($r['_pdf']);
 
         // B3: lampiran privat hanya bila ada tipe anggota untuk access_limit.
@@ -233,7 +259,7 @@ class Importer
         $ctId  = self::lookup($dbs, 'mst_content_type', 'content_type_id', 'content_type', ['text', 'teks']) ?: null;
         $mtId  = self::lookup($dbs, 'mst_media_type', 'media_type_id', 'media_type', $attach ? ['computer', 'komputer'] : ['unmediated']) ?: null;
         $crId  = self::lookup($dbs, 'mst_carrier_type', 'carrier_type_id', 'carrier_type', $attach ? ['online resource', 'sumber daya online'] : ['volume']) ?: null;
-        $langId = self::langId($dbs, $r['language'] ?? 'id');
+        $langId = self::langId($dbs, (string)($r['language'] ?? 'id'));
         $label = (string)($o['label'] ?? '');
 
         $data = [
@@ -244,19 +270,21 @@ class Importer
             'series_title' => $r['series'] ?? '', 'call_number' => $r['call_number'] ?? '',
             'classification' => $r['classification'] ?? '', 'language_id' => $langId,
             'gmd_id' => $gmdId, 'content_type_id' => $ctId, 'media_type_id' => $mtId, 'carrier_type_id' => $crId,
-            'notes' => trim($r['notes'] ?? ''), 'spec_detail_info' => trim($r['notes'] ?? ''),
-            'labels' => $label, // B4: jejak batch
+            'notes' => trim((string)($r['notes'] ?? '')), 'spec_detail_info' => trim((string)($r['notes'] ?? '')),
+            // labels TIDAK diisi: kolom biblio.labels = array terserialisasi (unserialize di core).
+            // Jejak batch sudah ada di plugin_pdf2biblio_log.
             'opac_hide' => 0, 'promoted' => 0, 'uid' => $uid, 'input_date' => $now, 'last_update' => $now,
         ];
         if (in_array('notes', self::cols($dbs, 'biblio'))) unset($data['spec_detail_info']);
         else unset($data['notes']);
 
+        self::$err = '';
         $bid = self::ins($dbs, 'biblio', $data);
-        if (!$bid) return ['ok'=>false, 'msg'=>'Gagal insert biblio: ' . (self::$err !== '' ? self::$err : $dbs->error)];
+        if (!$bid) return ['ok'=>false, 'msg'=>'Gagal insert biblio: ' . (self::$err !== '' ? self::$err : (string)$dbs->error)];
 
         $authorNames = [];
         $level = 1;
-        foreach (array_slice(array_filter(array_map('trim', explode(';', $r['author'] ?? ''))), 0, 12) as $n) {
+        foreach (array_slice(array_filter(array_map('trim', explode(';', (string)($r['author'] ?? '')))), 0, 12) as $n) {
             $org = preg_match('/^(Tim|Panitia|Lembaga|Badan|Kementerian|Universitas|Institut|Fakultas|Jurusan|Program Studi|Penerbit|PT\b|CV\b)/iu', $n);
             $aid = self::master($dbs, 'mst_author', 'author_id', 'author_name', $n, ['authority_type' => $org ? 'o' : 'p', 'author_year' => '', 'auth_list' => '']);
             if ($aid) { self::ins($dbs, 'biblio_author', ['biblio_id'=>$bid, 'author_id'=>$aid, 'level'=>$level, 'input_date'=>$now, 'last_update'=>$now]); $authorNames[] = $n; }
@@ -266,7 +294,7 @@ class Importer
         $topicNames = [];
         $subs = is_array($r['subjects'] ?? null) ? $r['subjects'] : explode(',', (string)($r['subjects'] ?? ''));
         foreach (array_slice(array_filter(array_map('trim', $subs)), 0, 8) as $s) {
-            $tid = self::master($dbs, 'mst_topic', 'topic_id', 'topic', mb_substr($s, 0, 60), ['topic_type' => 't']);
+            $tid = self::master($dbs, 'mst_topic', 'topic_id', 'topic', mb_substr((string)$s, 0, 60), ['topic_type' => 't']);
             if ($tid) { self::ins($dbs, 'biblio_topic', ['biblio_id'=>$bid, 'topic_id'=>$tid, 'level'=>1, 'input_date'=>$now, 'last_update'=>$now]); $topicNames[] = $s; }
         }
 
@@ -277,7 +305,7 @@ class Importer
             $dir = rtrim(SB, '/') . '/repository';
             if (!is_dir($dir)) @mkdir($dir, 0775, true);
             if (is_dir($dir) && is_writable($dir)) {
-                $slug = self::slug($title); $tk = substr($r['token'] ?? 'x', 0, 6);
+                $slug = self::slug($title); $tk = substr((string)($r['token'] ?? 'x'), 0, 6);
                 $name = $slug . '_' . $tk . '.pdf'; $i = 1;
                 while (file_exists($dir . '/' . $name)) $name = $slug . '_' . $tk . '_' . $i++ . '.pdf';
                 if (@copy($r['_pdf'], $dir . '/' . $name)) {
@@ -301,7 +329,7 @@ class Importer
                 $ext = ['image/jpeg'=>'jpg','image/png'=>'png','image/webp'=>'webp','image/gif'=>'gif'][$info['mime']] ?? 'jpg';
                 $cdir = rtrim(SB, '/') . '/images/docs';
                 if (!is_dir($cdir)) @mkdir($cdir, 0775, true);
-                $cname = 'p2b_' . $bid . '_' . substr($r['token'] ?? 'x', 0, 6) . '.' . $ext;
+                $cname = 'p2b_' . $bid . '_' . substr((string)($r['token'] ?? 'x'), 0, 6) . '.' . $ext;
                 if (is_writable($cdir) && @file_put_contents($cdir . '/' . $cname, $blob)) {
                     if (in_array('image', self::cols($dbs, 'biblio'))) {
                         try { @$dbs->query("UPDATE biblio SET image='" . self::e($dbs, $cname) . "' WHERE biblio_id=$bid"); } catch (\Throwable $e) {}
@@ -316,14 +344,17 @@ class Importer
             }
         }
 
-        // B2: sinkron indeks OPAC (gagal indeks tidak boleh membatalkan simpan).
+        // B2: sinkron indeks OPAC (gagal indeks tidak boleh membatalkan simpan, tapi harus dilaporkan).
+        $indexed = false;
         try {
-            self::syncIndex($dbs, $bid, $r, $authorNames, $topicNames,
+            $indexed = self::syncIndex($dbs, $bid, $r, $authorNames, $topicNames,
                 ['gmd'=>$gmdId, 'lang'=>$langId, 'content'=>$ctId, 'media'=>$mtId, 'carrier'=>$crId],
                 $label, $item, $cname, $now);
-        } catch (\Throwable $e) {}
+        } catch (\Throwable $e) { self::$err = 'index: ' . $e->getMessage(); }
 
-        return ['ok'=>true, 'dup'=>false, 'id'=>$bid, 'msg'=>'Tersimpan #' . $bid . ($item ? ' + eksemplar ' . $item['code'] : ''),
+        return ['ok'=>true, 'dup'=>false, 'id'=>$bid,
+            'msg' => 'Tersimpan #' . $bid . ($item ? ' + eksemplar ' . $item['code'] : '')
+                . ($indexed ? '' : ' — indeks OPAC gagal, jalankan System > Biblio Indexes') . $isbnNote,
             'item_code' => $item['code'] ?? '',
             'opac' => self::webroot() . 'index.php?p=show_detail&id=' . $bid];
     }
