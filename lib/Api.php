@@ -185,13 +185,21 @@ class Api
                 case 'meta':         self::meta(); break;
                 case 'batches':      self::batches(); break;
                 case 'undo_batch':   self::undo(); break;
-                case 'diag':         self::diag(); break;
+                case 'reset_parser': self::resetParser(); break;
                 default: self::out(['ok' => false, 'msg' => 'Aksi tidak dikenal: ' . $action], 400, $action);
             }
         } catch (\Throwable $e) {
             self::lg('ERROR ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
             self::out(['ok' => false, 'msg' => 'Error server: ' . $e->getMessage()], 500, $action);
         }
+    }
+
+        private static function resetParser(): void
+    {
+        require_once __DIR__ . '/ParseRunner.php';
+        $n = \PDF2Biblio\ParseRunner::resetFlags();
+        self::lg('reset_parser flags=' . $n);
+        self::out(['ok' => true, 'msg' => $n . ' bendera crash dihapus. Deteksi PHP CLI diulang pada unggah berikutnya.'], 200, 'reset_parser');
     }
 
     private static function diag(): void
@@ -263,7 +271,8 @@ class Api
         $d = \PDF2Biblio\ParseRunner::extract($dest, $f['name']);
         @ini_set('pcre.jit', $oldJit);
         @ini_set('memory_limit', $oldMem);
-        self::lg('extract done engine=smalot pages=' . $d['pdf_pages']);
+        $pi = \PDF2Biblio\ParseRunner::info();
+        self::lg('extract done engine=' . ($pi['engine'] ?: '?') . ' phpcli=' . ($pi['php'] ?: '-') . ' pages=' . $d['pdf_pages']);
         $log = $d['log'] ?? [];
         unset($d['log']);
         $log[] = 'Ekstrak: ' . $f['name'];
@@ -285,9 +294,9 @@ class Api
         $row = array_intersect_key($d, array_flip($fields));
         $row['token'] = $token;
         $row['cover_url'] = $coverUrl;
-        $row['log'] = $log;
         $filled = count(array_filter([$row['title'], $row['author'], $row['isbn'], $row['publisher'], $row['place'], $row['year']]));
         $log[] = "OK: {$row['title']} — $filled/6 field inti terisi ({$row['confidence']}%).";
+        $row['log'] = $log;
         // B5: manifest antrian per sesi (tahan refresh; TTL 24 jam via cleanup boot).
         @file_put_contents(self::$tmp . '/' . $token . '.json', json_encode(['uid' => self::$uid, 'created' => time(), 'row' => $row], self::JFLAG));
         self::out(['ok' => true, 'row' => $row], 200, $action);
@@ -327,7 +336,7 @@ class Api
                 $o = ['ok' => false, 'msg' => 'Error baris: ' . $e->getMessage()];
                 self::lg('ERROR row ' . $tk . ' ' . $e->getMessage());
             }
-            if (!empty($o['ok']) && empty($o['dup'])) {
+            if (!empty($o['ok'])) {
                 @unlink($r['_pdf']); @unlink($r['_cover']);
                 @unlink(self::$tmp . '/' . $tk . '.json'); // B5: baris tersimpan keluar dari antrian
             }

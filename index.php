@@ -16,7 +16,7 @@ require_once $autoload;
 
 foreach (['lib/Extractor.php', 'lib/Enricher.php', 'lib/Importer.php', 'lib/Api.php'] as $lf) {
     if (!is_file(__DIR__ . '/' . $lf)) {
-        echo '<div style="padding:16px;font-family:sans-serif"><b>File hilang: ' . htmlspecialchars($lf) . '</b> — tempel ulang paket PDF2Biblio 2.4.</div>';
+        echo '<div style="padding:16px;font-family:sans-serif"><b>File hilang: ' . htmlspecialchars($lf) . '</b> — tempel ulang paket PDF2Biblio 2.5.</div>';
         return;
     }
     require_once __DIR__ . '/' . $lf;
@@ -132,6 +132,7 @@ $badge = fn($ok, $label) => '<span class="p2b-badge ' . ($ok ? 'ok' : 'bad') . '
     <button class="p2b-btn" id="p2bSave">Simpan Semua ke Bibliografi</button>
     <button class="p2b-btn gray" id="p2bClear">Bersihkan Antrian</button>
     <button class="p2b-btn gray" id="p2bBatches">Riwayat Batch</button>
+    <button class="p2b-btn gray" id="p2bReset">Reset Mesin Parse</button>
     <button class="p2b-btn gray" id="p2bCsv" disabled>CSV Batch Terakhir</button>
     <span class="p2b-count" id="p2bCount">0 file dalam antrian.</span>
 
@@ -216,7 +217,10 @@ $badge = fn($ok, $label) => '<span class="p2b-badge ' . ($ok ? 'ok' : 'bad') . '
         fd.append('enrich', $('p2bEnrich').checked ? 1 : 0);
         fd.append('cover', $('p2bCover').checked ? 1 : 0);
         const res = await fetch(AJAX, {method:'POST', body:fd});
-        const j = await res.json();
+        const txt = await res.text();
+        let j;
+        try { j = JSON.parse(txt); }
+        catch(_) { throw new Error('Server tidak membalas JSON (HTTP ' + res.status + '): ' + txt.replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim().slice(0,180)); }
         if (!j.ok) throw new Error(j.msg || 'gagal');
         return j.row;
     }
@@ -233,7 +237,8 @@ $badge = fn($ok, $label) => '<span class="p2b-badge ' . ($ok ? 'ok' : 'bad') . '
                 try {
                     const row = await extractFile(f);
                     (row.log || []).forEach(l => log(l, /gagal|tidak ditemukan/i.test(l) ? 'warn' : ''));
-                    rows.push(row); render(row, rows.length - 1);
+                    if (rows.some(r => r.token === row.token)) { log('Dilewati, sudah dalam antrian: ' + row.pdf_name, 'warn'); }
+                    else { rows.push(row); render(row, rows.length - 1); }
                 } catch(e){ log('GAGAL ' + f.name + ': ' + e.message, 'err'); }
                 busy--; count();
             }
@@ -248,6 +253,7 @@ $badge = fn($ok, $label) => '<span class="p2b-badge ' . ($ok ? 'ok' : 'bad') . '
     ['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
     ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
     drop.addEventListener('drop', e => handleFiles(e.dataTransfer.files));
+    ['dragover','drop'].forEach(ev => document.addEventListener(ev, e => { if (!drop.contains(e.target)) e.preventDefault(); }));
 
     // ===== B-3: meta master, pemulihan antrian, opsi simpan, batch & undo, CSV =====
     function fillSelect(sel, list, def){
@@ -272,7 +278,7 @@ $badge = fn($ok, $label) => '<span class="p2b-badge ' . ($ok ? 'ok' : 'bad') . '
             const fd = new URLSearchParams(); fd.append('action','queue'); fd.append('t',CSRF);
             const j = await (await fetch(AJAX, {method:'POST', body:fd})).json();
             if (j.ok && (j.rows || []).length) {
-                j.rows.forEach(row => { rows.push(row); render(row, rows.length - 1); });
+                j.rows.forEach(row => { if (rows.some(r => r.token === row.token)) return; rows.push(row); render(row, rows.length - 1); });
                 count();
                 log('Antrian dipulihkan: ' + j.rows.length + ' baris (tahan refresh).', 'ok');
             }
@@ -299,6 +305,16 @@ $badge = fn($ok, $label) => '<span class="p2b-badge ' . ($ok ? 'ok' : 'bad') . '
         } catch(e){ log('Riwayat batch gagal: ' + e.message, 'warn'); }
     }
     $('p2bBatches').addEventListener('click', () => {
+        $('p2bReset').addEventListener('click', async () => {
+        if (!confirm('Reset mesin parse?\nSemua bendera crash dihapus dan PHP CLI dideteksi ulang.\nAntrian & bibliografi tidak disentuh.')) return;
+        const btn = $('p2bReset'); btn.disabled = true;
+        try {
+            const fd = new URLSearchParams(); fd.append('action','reset_parser'); fd.append('t',CSRF);
+            const r = await (await fetch(AJAX, {method:'POST', body:fd})).json();
+            log(r.msg || (r.ok ? 'Reset mesin parse selesai.' : 'Reset gagal.'), r.ok ? 'ok' : 'err');
+        } catch(e){ log('Reset mesin parse gagal: ' + e.message, 'err'); }
+        btn.disabled = false;
+    });
         const p = $('p2bBatchPanel');
         p.classList.toggle('p2b-hidden');
         if (!p.classList.contains('p2b-hidden')) refreshBatches();
@@ -347,7 +363,7 @@ $badge = fn($ok, $label) => '<span class="p2b-badge ' . ($ok ? 'ok' : 'bad') . '
             j.results.forEach(out => {
                 const row = todo.find(r => r.token === out.token);
                 if (!row) return;
-                if (out.ok && out.dup){ setStatus(row, 'dup', 'duplikat <a href="' + esc(out.opac || '#') + '" target="_blank">#' + out.id + '</a>'); log(row.title + ': ' + out.msg, 'warn'); }
+                if (out.ok && out.dup){ row.saved = true; setStatus(row, 'dup', 'duplikat <a href="' + esc(out.opac || '#') + '" target="_blank">#' + out.id + '</a>'); log(row.title + ': ' + out.msg, 'warn'); }
                 else if (out.ok){ row.saved = true; setStatus(row, 'simpan', 'tersimpan <a href="' + esc(out.opac) + '" target="_blank">#' + out.id + '</a>' + (out.item_code ? '<br><small>eksemplar ' + esc(out.item_code) + '</small>' : ''));
                     row._tr.querySelectorAll('input,textarea').forEach(x => x.disabled = true); log(row.title + ': ' + out.msg, 'ok'); }
                 else { setStatus(row, 'gagal', 'gagal'); log(row.title + ': ' + out.msg, 'err'); }
@@ -375,7 +391,7 @@ $badge = fn($ok, $label) => '<span class="p2b-badge ' . ($ok ? 'ok' : 'bad') . '
     count();
     loadMeta();
     restoreQueue();
-    log('PDF2Biblio 2.4 siap. Pintu tunggal index.php (terbukti ada di disk). Ekstraksi: KDT + hak cipta + sampul + metadata + nama file.');
+    log('PDF2Biblio 2.5 siap. Pintu tunggal index.php (terbukti ada di disk). Ekstraksi: KDT + hak cipta + sampul + metadata + nama file.');
     log('Batch B aktif: eksemplar otomatis, lampiran privat, label batch, antrian tahan refresh, undo batch, CSV.');
 })();
 </script>

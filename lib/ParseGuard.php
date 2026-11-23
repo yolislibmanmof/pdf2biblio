@@ -1,10 +1,14 @@
 <?php
 namespace PDF2Biblio;
 
-/** Gate mesin parse anti-crash: smalot hanya file <=8MB & belum pernah crash; selain itu native. */
+/**
+ * Gate parse in-process (v2.5.0): smalot hanya file <= 8 MB & belum pernah crash; selain itu native.
+ * Dipakai ParseRunner sebagai fallback ketika child PHP CLI tidak tersedia / gagal lunak.
+ */
 class ParseGuard
 {
-    private const SMALL = 8388608; // 8 MB batas aman smalot (port mesin legacy)
+    private const SMALL    = 8388608; // 8 MB
+    private const FLAG_TTL = 900;     // 15 menit
 
     public static function extract(string $file, string $orig): array
     {
@@ -13,17 +17,20 @@ class ParseGuard
         $tmp = dirname(__DIR__) . '/tmp';
         if (!is_dir($tmp)) @mkdir($tmp, 0775, true);
         $flag = $tmp . '/crash_' . $hash . '.flag';
-        $useSmalot = $size <= self::SMALL && class_exists('\Smalot\PdfParser\Parser') && !is_file($flag);
+
+        $hadFlag = is_file($flag);
+        if ($hadFlag && time() - (int)@filemtime($flag) > self::FLAG_TTL) { @unlink($flag); $hadFlag = false; }
+
+        $useSmalot = $size <= self::SMALL && class_exists('\Smalot\PdfParser\Parser') && !$hadFlag;
 
         if ($useSmalot) {
-            @file_put_contents($flag, '1'); // bila proses mati di sini, flag tersisa → retry pakai native
+            @file_put_contents($flag, 'in-progress'); // bila proses mati di sini, bendera tersisa -> retry native
             $d = Extractor::extract($file, $orig);
-            @unlink($flag); // parse selesai sehat
-            $d['log'][] = 'Mesin: smalot (file <= 8 MB, belum pernah crash).';
+            @unlink($flag);
+            $d['log'] = array_merge((array)($d['log'] ?? []), ['Mesin: smalot in-process (file <= 8 MB).']);
             return $d;
         }
 
-        // Native anti-crash (port mesin legacy): teks+meta+pages, lalu heuristik KDT yang sama.
         if (!class_exists('P2B_PdfExtractor')) {
             $pf = __DIR__ . '/PdfExtractor.php';
             if (is_file($pf)) {
@@ -31,21 +38,23 @@ class ParseGuard
                 require_once $pf;
             }
         }
+
         $front = []; $meta = []; $total = 0;
         if (class_exists('P2B_PdfExtractor')) {
             $nat = \P2B_PdfExtractor::extract($file, 90000, true);
             $meta = (array)$nat['meta'];
             $total = (int)$nat['pages'];
             $txt = (string)$nat['text'];
-            if (!mb_check_encoding($txt, 'UTF-8')) $txt = mb_convert_encoding($txt, 'UTF-8', 'Windows-1252');
+            if (!mb_check_encoding($txt, 'UTF-8')) $txt = (string)@mb_convert_encoding($txt, 'UTF-8', 'Windows-1252');
             foreach (mb_str_split($txt, 3000) as $i => $ch) $front[$i] = $ch;
             unset($nat, $txt);
         }
         if (!$front) $front = [''];
+
         $d = Extractor::extract($file, $orig, ['meta' => $meta, 'front' => $front, 'total' => $total, 'tm' => '']);
-        $d['log'][] = is_file($flag)
-            ? 'Mesin: native anti-crash (bendera crash: smalot pernah mati pada file ini).'
-            : 'Mesin: native anti-crash (file > 8 MB).';
+        $reason = $hadFlag ? 'bendera crash smalot masih aktif'
+            : ($size > self::SMALL ? 'file > 8 MB' : 'smalot tidak tersedia');
+        $d['log'] = array_merge((array)($d['log'] ?? []), ['Mesin: native in-process (' . $reason . ').']);
         return $d;
     }
 }

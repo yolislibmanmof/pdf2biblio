@@ -3,7 +3,7 @@
  * Plugin Name: PDF2Biblio
  * Plugin URI: https://github.com/yolislibmanmof/pdf2biblio
  * Description: Impor bibliografi otomatis dari PDF (KDT, hak cipta, sampul, metadata) + perkayaan OpenLibrary & Google Books + cover + lampiran PDF.
- * Version: 2.4.0
+ * Version: 2.5.0
  * Author: Yolis Libman
  * Author URI: https://github.com/yolislibmanmof
  */
