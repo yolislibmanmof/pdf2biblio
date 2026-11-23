@@ -20,7 +20,7 @@ class Extractor
             'scanned'=>false,'sources'=>[],'isbns_all'=>[],'confidence'=>0];
     }
 
-    public static function extract(string $file, string $orig): array
+    public static function extract(string $file, string $orig, array $preset = []): array
     {
         $d = self::blank();
         $d['pdf_name'] = $orig;
@@ -31,6 +31,14 @@ class Extractor
         $stemSane = mb_strlen($stem) >= 8 && str_word_count($stem) >= 2 && !self::isPersonLine($stem);
 
         $meta = []; $front = []; $total = 0; $tmTitle = '';
+        if ($preset) {
+            // Hasil parse dari child (ParseRunner): lewati seluruh blok guard di bawah.
+            $meta = (array)($preset['meta'] ?? []);
+            $front = (array)($preset['front'] ?? []);
+            $total = (int)($preset['total'] ?? 0);
+            $tmTitle = (string)($preset['tm'] ?? '');
+        }
+        if (!$preset) {
         // Guard anti-crash: smalot hanya file kecil + Config limit; bendera crash memaksa native.
         $hash = (string)@sha1_file($file);
         $crashFlag = dirname(__DIR__) . '/tmp/crash_' . $hash . '.flag';
@@ -95,6 +103,7 @@ class Extractor
             } catch (\Throwable $e) {
                 $log[] = 'Parser native gagal: ' . $e->getMessage() . ' — mengandalkan metadata + nama file + API.';
             }
+        }
         }
         // B1: normalisasi blok KDT multi-baris (label ⏎ :  nilai, gelar & ISBN terpecah baris).
         foreach ($front as $k => $t) $front[$k] = self::kdtNormalize($t);

@@ -259,7 +259,8 @@ class Api
         @ini_set('pcre.jit', '0');
         @ini_set('memory_limit', '512M');
         @set_time_limit(180);
-        $d = Extractor::extract($dest, $f['name']);
+        require_once __DIR__ . '/ParseRunner.php';
+        $d = \PDF2Biblio\ParseRunner::extract($dest, $f['name']);
         @ini_set('pcre.jit', $oldJit);
         @ini_set('memory_limit', $oldMem);
         self::lg('extract done engine=smalot pages=' . $d['pdf_pages']);
