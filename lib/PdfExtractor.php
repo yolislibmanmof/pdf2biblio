@@ -1,7 +1,9 @@
 <?php
 /**
- * PDF2Biblio - mesin ekstraksi teks & metadata PDF (v1.0.2 anti-crash).
+ * PDF2Biblio - mesin ekstraksi teks & metadata PDF (v1.0.3 anti-crash).
  * Utama: smalot/pdfparser (hanya file <=8MB). Fallback: parser native pure-PHP.
+ * v1.0.3: namespace \Smalot\PdfParser (kapital P — PSR-0 case-sensitive),
+ *         pola stream tidak lagi match "endstream".
  */
 if (!defined('INDEX_AUTH')) { die('direct access not allowed'); }
 
@@ -12,7 +14,7 @@ class P2B_PdfExtractor
 
     public static function extract($path, $maxTextChars = 90000, $forceNative = false)
     {
-        @ini_set('pcre.jit', '0'); // hindari crash stack JIT PCRE pada subject besar
+        @ini_set('pcre.jit', '0');
         @ini_set('memory_limit', '512M');
         $out = array('engine' => 'none', 'meta' => array(), 'pages' => 0, 'text' => '', 'cover' => null, 'warnings' => array());
         if (!is_file($path) || !is_readable($path)) { throw new \Exception('File PDF tidak dapat dibaca.'); }
@@ -20,15 +22,15 @@ class P2B_PdfExtractor
         if ($size < 8) { throw new \Exception('File PDF kosong / rusak.'); }
         if ($size > self::MAX_FILE_BYTES) { throw new \Exception('File PDF terlalu besar (>80 MB). Kompres / pecah file terlebih dahulu.'); }
 
-        if (!$forceNative && $size <= self::SMALL_FILE_BYTES && class_exists('\Smalot\Pdfparser\Parser')) {
+        if (!$forceNative && $size <= self::SMALL_FILE_BYTES && class_exists('\Smalot\PdfParser\Parser')) {
             try {
                 $config = null;
-                if (class_exists('\Smalot\Pdfparser\Config')) {
-                    $config = new \Smalot\Pdfparser\Config();
+                if (class_exists('\Smalot\PdfParser\Config')) {
+                    $config = new \Smalot\PdfParser\Config();
                     if (method_exists($config, 'setRetainImageContent')) { $config->setRetainImageContent(false); }
                     if (method_exists($config, 'setDecodeMemoryLimit')) { $config->setDecodeMemoryLimit(64 * 1024 * 1024); }
                 }
-                $parser = $config ? new \Smalot\Pdfparser\Parser(array(), $config) : new \Smalot\Pdfparser\Parser();
+                $parser = $config ? new \Smalot\PdfParser\Parser(array(), $config) : new \Smalot\PdfParser\Parser();
                 $pdf = $parser->parseFile($path);
                 $out['meta'] = self::normMeta($pdf->getDetails());
                 $pages = $pdf->getPages();
@@ -102,9 +104,9 @@ class P2B_PdfExtractor
         $clean = preg_replace('/[^\P{C}\n\t]+/u', ' ', $txt);
         if ($clean !== null) { $txt = $clean; }
         $lines = array();
-        foreach (explode("\n", $txt) as $ln) { $ln = trim(preg_replace('/[ \t]+/', ' ', $ln)); $lines[] = $ln; }
+        foreach (explode("\n", $txt) as $ln) { $ln = trim((string)preg_replace('/[ \t]+/', ' ', $ln)); $lines[] = $ln; }
         $txt = implode("\n", $lines);
-        $txt = preg_replace('/\n{3,}/', "\n\n", $txt);
+        $txt = (string)preg_replace('/\n{3,}/', "\n\n", $txt);
         return trim($txt);
     }
 
@@ -122,7 +124,7 @@ class P2B_PdfExtractor
         if (preg_match('//u', $bin)) { return $bin; }
         if (function_exists('mb_convert_encoding')) { return (string)@mb_convert_encoding($bin, 'UTF-8', 'Windows-1252'); }
         if (function_exists('iconv')) { return (string)@iconv('Windows-1252', 'UTF-8//IGNORE', $bin); }
-        return preg_replace('/[\x80-\xFF]/', '', $bin);
+        return (string)preg_replace('/[\x80-\xFF]/', '', $bin);
     }
 
     private static function decodePdfString($s)
@@ -148,7 +150,7 @@ class P2B_PdfExtractor
     private static function streamBlocks($raw, $maxBlocks = 4000)
     {
         $offset = 0; $n = 0;
-        while ($n < $maxBlocks && preg_match('/stream\r?\n/', $raw, $m, PREG_OFFSET_CAPTURE, $offset)) {
+        while ($n < $maxBlocks && preg_match('/(?<!end)stream\r?\n/', $raw, $m, PREG_OFFSET_CAPTURE, $offset)) {
             $start = $m[0][1] + strlen($m[0][0]);
             $end = strpos($raw, 'endstream', $start);
             if ($end === false) { break; }
@@ -197,7 +199,7 @@ class P2B_PdfExtractor
         foreach (self::streamBlocks($raw) as $blk) {
             if (strlen($text) > $maxTextChars || $processed > 200) { break; }
             $processed++;
-            if (strpos($blk['dict'], '/Subtype') !== false) { continue; } // lewati gambar/font/XObject
+            if (strpos($blk['dict'], '/Subtype') !== false) { continue; }
             if (strlen($blk['data']) > 4194304) { continue; }
             $content = $blk['data'];
             if (strpos($content, 'BT') === false || (strpos($content, 'Tj') === false && strpos($content, 'TJ') === false)) {
